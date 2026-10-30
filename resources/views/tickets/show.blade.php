@@ -58,7 +58,7 @@
             <div class="inline-flex items-center gap-2.5 px-3.5 py-1.5 rounded-full bg-amber-50 border border-amber-200/80 text-xs text-amber-800">
                 <span class="w-2 h-2 rounded-full bg-amber-500 animate-pulse"></span>
                 <span>Posisi tiket saat ini: <strong>Role {{ $ticket->currentRole?->name }}</strong></span>
-                @if($holderUser)
+                @if($holderUser && (app()->environment('local') || config('app.debug')))
                     <form action="{{ route('auth.quick-switch', $holderUser) }}" method="POST" class="inline">
                         @csrf
                         <button type="submit" class="font-bold underline hover:text-amber-950 ml-1">

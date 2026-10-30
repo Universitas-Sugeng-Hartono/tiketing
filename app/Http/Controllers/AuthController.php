@@ -14,15 +14,18 @@ class AuthController extends Controller
             return redirect()->route('dashboard');
         }
 
-        // Ambil akun untuk pengujian cepat (termasuk staf yang baru ditambahkan)
-        $demoUsers = User::with('role.parent')
-            ->where(function ($q) {
-                $q->whereNotNull('role_id')
-                  ->orWhere('user_type', 'admin');
-            })
-            ->latest('id')
-            ->take(12)
-            ->get();
+        // Akses cepat hanya untuk local/debug — jangan tampil di production
+        $demoUsers = collect();
+        if ($this->allowsQuickSwitch()) {
+            $demoUsers = User::with('role.parent')
+                ->where(function ($q) {
+                    $q->whereNotNull('role_id')
+                      ->orWhere('user_type', 'admin');
+                })
+                ->latest('id')
+                ->take(12)
+                ->get();
+        }
 
         return view('auth.login', compact('demoUsers'));
     }
@@ -52,11 +55,20 @@ class AuthController extends Controller
      */
     public function quickSwitch(User $user, Request $request)
     {
+        if (!$this->allowsQuickSwitch()) {
+            abort(403, 'Akses cepat dinonaktifkan di production.');
+        }
+
         Auth::login($user);
         $request->session()->regenerate();
 
         return redirect()->route('dashboard')
             ->with('success', "Berhasil beralih ke akun {$user->name} (Role: {$user->role?->name})");
+    }
+
+    private function allowsQuickSwitch(): bool
+    {
+        return app()->environment('local') || (bool) config('app.debug');
     }
 
     public function logout(Request $request)
