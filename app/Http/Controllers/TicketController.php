@@ -864,9 +864,17 @@ class TicketController extends Controller
             'attachment.required' => "Layanan '{$category->name}' mewajibkan Anda mengisi dan mengunggah dokumen template layanan.",
         ]);
 
+        if (!$user->role) {
+            return back()->with('error', 'Akun Anda belum memiliki role. Hubungi admin IT.');
+        }
+
         $targetRole = $category->resolveTargetRoleFor($user->role)
             ?? Role::where('is_superuser', true)->first()
             ?? $user->role;
+
+        if (!$targetRole) {
+            return back()->with('error', 'Kategori layanan belum punya role penerima. Hubungi admin IT.');
+        }
 
         // Layanan berdivisi dengan pimpinan (Kepala/SPV): masuk antrian disposisi
         // tanpa auto-assign ke kepala role staff — Deny/Ardy yang menunjuk pengerja.
@@ -890,29 +898,46 @@ class TicketController extends Controller
         if ($request->hasFile('attachment')) {
             $file = $request->file('attachment');
             $attachmentName = $file->getClientOriginalName();
-            $attachmentPath = $file->store('attachments', 'public');
+            try {
+                $attachmentPath = $file->store('attachments', 'public');
+            } catch (\Throwable $e) {
+                report($e);
+
+                return back()
+                    ->withInput()
+                    ->with('error', 'Gagal menyimpan lampiran. Pastikan folder storage server bisa ditulis.');
+            }
         }
 
-        $nextSequence = Ticket::count() + 1;
-        $ticketNumber = sprintf('TKT-%s-%04d', now()->format('Ym'), $nextSequence);
-
-        $ticket = Ticket::create([
-            'ticket_number' => $ticketNumber,
-            'title' => $baseValidated['title'],
-            'description' => $baseValidated['description'],
-            'attachment_path' => $attachmentPath,
-            'attachment_name' => $attachmentName,
-            'category_id' => $category->id,
-            'priority' => RolePriorityRoute::legacyPriority((int) $baseValidated['priority_rank']),
-            'priority_rank' => (int) $baseValidated['priority_rank'],
-            'workflow_type' => $category->workflow_type,
-            'creator_id' => $user->id,
-            'creator_role_id' => $user->role_id,
-            'current_role_id' => $targetRole->id,
-            'assigned_user_id' => $assignedUser?->id,
-            'status' => 'open',
-            'approval_step' => 1,
-        ]);
+        $ticket = null;
+        $attempts = 0;
+        do {
+            $attempts++;
+            try {
+                $ticket = Ticket::create([
+                    'ticket_number' => Ticket::generateTicketNumber(),
+                    'title' => $baseValidated['title'],
+                    'description' => $baseValidated['description'],
+                    'attachment_path' => $attachmentPath,
+                    'attachment_name' => $attachmentName,
+                    'category_id' => $category->id,
+                    'priority' => RolePriorityRoute::legacyPriority((int) $baseValidated['priority_rank']),
+                    'priority_rank' => (int) $baseValidated['priority_rank'],
+                    'workflow_type' => $category->workflow_type,
+                    'creator_id' => $user->id,
+                    'creator_role_id' => $user->role_id,
+                    'current_role_id' => $targetRole->id,
+                    'assigned_user_id' => $assignedUser?->id,
+                    'status' => 'open',
+                    'approval_step' => 1,
+                ]);
+            } catch (\Illuminate\Database\UniqueConstraintViolationException $e) {
+                if ($attempts >= 5) {
+                    throw $e;
+                }
+                usleep(50000);
+            }
+        } while (!$ticket);
 
         TicketLog::create([
             'ticket_id' => $ticket->id,

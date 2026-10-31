@@ -80,6 +80,27 @@ class Ticket extends Model
         return $this->hasMany(TicketProblem::class)->orderBy('sort_order')->orderBy('id');
     }
 
+    /**
+     * Nomor tiket berikutnya berdasarkan nomor terbesar bulan berjalan (bukan count()).
+     */
+    public static function generateTicketNumber(?\DateTimeInterface $at = null): string
+    {
+        $at = $at ?? now();
+        $prefix = sprintf('TKT-%s-', $at->format('Ym'));
+
+        $latest = static::query()
+            ->where('ticket_number', 'like', $prefix . '%')
+            ->orderByDesc('ticket_number')
+            ->value('ticket_number');
+
+        $next = 1;
+        if (is_string($latest) && preg_match('/^TKT-\d{6}-(\d+)$/', $latest, $matches)) {
+            $next = (int) $matches[1] + 1;
+        }
+
+        return sprintf('%s%04d', $prefix, $next);
+    }
+
     public function progressPercent(): ?int
     {
         if ($this->progress_percent === null) {
