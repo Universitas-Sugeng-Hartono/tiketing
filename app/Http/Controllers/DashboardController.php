@@ -17,16 +17,14 @@ class DashboardController extends Controller
         $user = Auth::user()->load(['role.parent', 'role.children', 'supervisor']);
         $role = $user->role;
 
-        // Tiket Masuk ke Role saat ini
-        $incomingTickets = Ticket::with(['creator', 'creatorRole', 'category', 'currentRole', 'assignedUser'])
-            ->where('current_role_id', $role?->id)
+        // Antrian yang perlu tindakan user (dashboard), bukan seluruh antrean role
+        $incomingTickets = Ticket::actionableQueryFor($user)
+            ->with(['creator', 'creatorRole', 'category', 'currentRole', 'assignedUser'])
             ->latest()
             ->take(8)
             ->get();
 
-        $activeIncomingCount = Ticket::where('current_role_id', $role?->id)
-            ->whereNotIn('status', ['resolved', 'rejected', 'closed'])
-            ->count();
+        $activeIncomingCount = Ticket::actionableQueryFor($user)->count();
 
         $escalatedFromMyRoleCount = Ticket::whereHas('logs', function ($q) use ($role) {
             $q->where('from_role_id', $role?->id)

@@ -104,9 +104,9 @@ class AppServiceProvider extends ServiceProvider
                     ->where('show_in_launcher', true)
                     ->whereNull('parent_id');
 
-                $roleInboxCount = Ticket::where('current_role_id', $user->role_id)
-                    ->whereNotIn('status', ['resolved', 'rejected', 'closed'])
-                    ->count();
+                // Badge sidebar "Tiket Masuk Role" dimatikan —
+                // notifikasi antrian ditampilkan di dashboard & lonceng header.
+                $roleInboxCount = 0;
 
                 // Data kategori global untuk Modal Buat Tiket di seluruh halaman
                 $globalCategories = Schema::hasTable('ticket_categories')
@@ -146,28 +146,9 @@ class AppServiceProvider extends ServiceProvider
                 $totalNotifCount = 0;
 
                 if (Schema::hasTable('tickets')) {
-                    $headId = $user->role?->head_user_id;
-                    $isHead = $headId && (int) $headId === (int) $user->id;
-                    $isAdminIt = in_array($user->role?->slug, ['admin-it', 'supervisor-it'], true);
-
-                    $incomingQuery = Ticket::with(['creator', 'category'])
-                        ->whereNotIn('status', ['resolved', 'rejected', 'closed']);
-
-                    if ($isHead || $user->isSuperuser()) {
-                        $incomingQuery->where('current_role_id', $user->role_id);
-                    } elseif ($isAdminIt) {
-                        $itRoleIds = \App\Models\Role::whereIn('slug', ['admin-it', 'supervisor-it'])->pluck('id')->toArray();
-                        $incomingQuery->whereIn('current_role_id', $itRoleIds);
-                    } elseif ($headId) {
-                        $incomingQuery->where('assigned_user_id', $user->id);
-                    } else {
-                        $incomingQuery->where(function ($q) use ($user) {
-                            $q->where('current_role_id', $user->role_id)
-                              ->orWhere('assigned_user_id', $user->id);
-                        });
-                    }
-
-                    $incomingList = $incomingQuery->latest('updated_at')
+                    $incomingList = Ticket::actionableQueryFor($user)
+                        ->with(['creator', 'category'])
+                        ->latest('updated_at')
                         ->take(8)
                         ->get()
                         ->map(function ($t) {
@@ -194,25 +175,23 @@ class AppServiceProvider extends ServiceProvider
                         ->where(function ($q) {
                             $q->whereIn('status', ['resolved', 'closed'])
                               ->orWhere('work_status', 'finished');
-                        });
-
-                    if ($isHead || $user->isSuperuser()) {
-                        $completedQuery->where(function ($q) use ($user) {
-                            $q->where('current_role_id', $user->role_id)
-                              ->orWhere('creator_id', $user->id);
-                        });
-                    } elseif ($isAdminIt) {
-                        $itRoleIds = \App\Models\Role::whereIn('slug', ['admin-it', 'supervisor-it'])->pluck('id')->toArray();
-                        $completedQuery->where(function ($q) use ($itRoleIds, $user) {
-                            $q->whereIn('current_role_id', $itRoleIds)
-                              ->orWhere('creator_id', $user->id);
-                        });
-                    } else {
-                        $completedQuery->where(function ($q) use ($user) {
+                        })
+                        ->where(function ($q) use ($user) {
                             $q->where('creator_id', $user->id)
-                              ->orWhere('assigned_user_id', $user->id);
+                                ->orWhere('assigned_user_id', $user->id);
+
+                            if ($user->isSuperuser() || $user->isHeadOfRole()) {
+                                $q->orWhere('current_role_id', $user->role_id);
+                            }
+
+                            $division = $user->division();
+                            if ($division && $user->isDivisionLeader($division) && $division->staff_role_id) {
+                                $q->orWhere(function ($divQ) use ($division) {
+                                    $divQ->whereHas('category', fn ($c) => $c->where('division_id', $division->id))
+                                        ->where('current_role_id', $division->staff_role_id);
+                                });
+                            }
                         });
-                    }
 
                     $completedList = $completedQuery->latest('updated_at')
                         ->take(8)

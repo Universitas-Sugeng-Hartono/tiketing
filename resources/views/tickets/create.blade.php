@@ -5,7 +5,8 @@
      x-data="{
         selectedCategory: '{{ old('category_id', $categories->first()?->id) }}',
         chains: {{ Js::from($categoryChains) }},
-        fileName: ''
+        fileName: '',
+        submitting: false
      }">
 
     <div class="mb-4">
@@ -14,7 +15,8 @@
     </div>
 
     <div class="bg-white rounded-xl p-6 border border-slate-200/90">
-        <form action="{{ route('tickets.store') }}" method="POST" enctype="multipart/form-data" class="space-y-4">
+        <form action="{{ route('tickets.store') }}" method="POST" enctype="multipart/form-data" class="space-y-4"
+              @submit="if (submitting) { $event.preventDefault(); return false; } submitting = true">
             @csrf
 
             <div>
@@ -73,8 +75,10 @@
                 <a href="{{ route('dashboard') }}" class="px-4 py-2 rounded-lg border border-slate-200 text-xs font-medium text-slate-600 hover:bg-slate-50">
                     Batal
                 </a>
-                <button type="submit" class="px-4 py-2 rounded-lg bg-slate-900 hover:bg-slate-800 text-white text-xs font-semibold transition">
-                    Kirim Tiket
+                <button type="submit" :disabled="submitting"
+                        class="px-4 py-2 rounded-lg bg-slate-900 hover:bg-slate-800 text-white text-xs font-semibold transition disabled:opacity-60 disabled:cursor-not-allowed">
+                    <span x-show="!submitting">Kirim Tiket</span>
+                    <span x-show="submitting" x-cloak>Mengirim...</span>
                 </button>
             </div>
         </form>

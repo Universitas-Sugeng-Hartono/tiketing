@@ -481,7 +481,8 @@
          x-data="{
             selectedCategory: '{{ old('category_id', ($globalCategories ?? collect())->first()?->id) }}',
             chains: {{ Js::from($globalCategoryChains ?? []) }},
-            fileName: ''
+            fileName: '',
+            submitting: false
          }"
          class="bg-white rounded-2xl border border-slate-200 shadow-xl max-w-lg w-full max-h-[90vh] flex flex-col overflow-hidden">
 
@@ -495,7 +496,9 @@
             </button>
         </div>
 
-        <form action="{{ route('tickets.store') }}" method="POST" enctype="multipart/form-data" class="p-6 space-y-4 overflow-y-auto">
+        <form action="{{ route('tickets.store') }}" method="POST" enctype="multipart/form-data"
+              class="p-6 space-y-4 overflow-y-auto"
+              @submit="if (submitting) { $event.preventDefault(); return false; } submitting = true">
             @csrf
             <input type="hidden" name="from_modal" value="1">
 
@@ -598,13 +601,15 @@
             </div>
 
             <div class="flex items-center justify-end gap-2 pt-3 border-t border-slate-100">
-                <button type="button" @click="createTicketModal = false"
-                        class="px-4 py-2 rounded-lg border border-slate-200 text-xs font-medium text-slate-600 hover:bg-slate-50">
+                <button type="button" @click="createTicketModal = false" :disabled="submitting"
+                        class="px-4 py-2 rounded-lg border border-slate-200 text-xs font-medium text-slate-600 hover:bg-slate-50 disabled:opacity-50">
                     Batal
                 </button>
                 <button type="submit"
-                        class="px-4 py-2 rounded-lg bg-slate-900 hover:bg-slate-800 text-white text-xs font-semibold transition">
-                    Kirim Tiket
+                        :disabled="submitting"
+                        class="px-4 py-2 rounded-lg bg-slate-900 hover:bg-slate-800 text-white text-xs font-semibold transition disabled:opacity-60 disabled:cursor-not-allowed inline-flex items-center gap-1.5">
+                    <span x-show="!submitting">Kirim Tiket</span>
+                    <span x-show="submitting" x-cloak>Mengirim...</span>
                 </button>
             </div>
         </form>

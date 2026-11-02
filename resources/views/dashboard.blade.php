@@ -440,7 +440,7 @@
             <div class="bg-white rounded-2xl border border-slate-200/80 shadow-sm overflow-hidden">
                 <div class="px-5 py-4 border-b border-slate-100 flex items-center justify-between">
                     <div>
-                        <h2 class="text-sm font-bold text-slate-900">Tiket Masuk Antrean — Role {{ $role?->name }}</h2>
+                        <h2 class="text-sm font-bold text-slate-900">Tiket yang Perlu Tindakan Anda</h2>
                         <p class="text-xs text-slate-500 mt-0.5">Permohonan yang memerlukan review, persetujuan, atau tindak lanjut dari Anda</p>
                     </div>
                     <a href="{{ route('tickets.inbox') }}" class="text-xs font-semibold text-indigo-600 hover:text-indigo-700 flex items-center gap-1">

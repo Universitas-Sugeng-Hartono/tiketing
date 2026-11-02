@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
@@ -9,6 +10,60 @@ use Illuminate\Support\Collection;
 
 class Ticket extends Model
 {
+    /**
+     * Tiket yang perlu tindakan user: pimpinan divisi (antrian disposisi),
+     * kepala role, atau staff yang sudah ditugaskan.
+     */
+    public static function actionableQueryFor(User $user): Builder
+    {
+        $query = static::query()->whereNotIn('status', ['resolved', 'rejected', 'closed']);
+
+        if ($user->isSuperuser()) {
+            return $query;
+        }
+
+        $userDivision = $user->division();
+        if ($userDivision && $user->isDivisionLeader($userDivision)) {
+            $leadershipRoleIds = $userDivision->leadershipRoleIds();
+            $staffRoleId = (int) ($userDivision->staff_role_id ?? 0);
+
+            return $query->where(function ($q) use ($user, $userDivision, $leadershipRoleIds, $staffRoleId) {
+                $q->where(function ($sub) use ($userDivision, $leadershipRoleIds, $staffRoleId) {
+                    $sub->whereHas('category', fn ($c) => $c->where('division_id', $userDivision->id))
+                        ->where(function ($roleQ) use ($leadershipRoleIds, $staffRoleId) {
+                            if (! empty($leadershipRoleIds)) {
+                                $roleQ->whereIn('current_role_id', $leadershipRoleIds);
+                            }
+                            if ($staffRoleId > 0) {
+                                $roleQ->orWhere('current_role_id', $staffRoleId);
+                            }
+                        });
+                })->orWhere('current_role_id', $user->role_id)
+                    ->orWhere('assigned_user_id', $user->id);
+            });
+        }
+
+        $headId = $user->role?->head_user_id;
+        $isHead = $headId && (int) $headId === (int) $user->id;
+
+        if ($isHead) {
+            return $query->where(function ($q) use ($user) {
+                $q->where('current_role_id', $user->role_id)
+                    ->orWhere('assigned_user_id', $user->id);
+            });
+        }
+
+        // Staff / Admin IT pelaksana: hanya tiket yang diarahkan ke mereka
+        if ($user->role?->slug === 'admin-it' || $headId) {
+            return $query->where('assigned_user_id', $user->id);
+        }
+
+        return $query->where(function ($q) use ($user) {
+            $q->where('current_role_id', $user->role_id)
+                ->orWhere('assigned_user_id', $user->id);
+        });
+    }
+
     protected $fillable = [
         'ticket_number',
         'title',

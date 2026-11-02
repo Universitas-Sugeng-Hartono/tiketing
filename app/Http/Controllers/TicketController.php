@@ -12,6 +12,7 @@ use App\Models\TicketProblem;
 use App\Models\User;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Storage;
 
 class TicketController extends Controller
@@ -594,47 +595,12 @@ class TicketController extends Controller
                 $q->where('from_role_id', $user->role_id);
             });
         } else {
-            $headId = $user->role?->head_user_id;
-            $isHead = $headId && (int) $headId === (int) $user->id;
-            $userDivision = $user->division();
-
-            if ($userDivision && $user->isDivisionLeader($userDivision)) {
-                // Shared Inbox Pimpinan Divisi (Deny & Ardy):
-                // Antrian disposisi layanan divisi + pantau tiket yang sudah diarahkan ke staff
-                $leadershipRoleIds = $userDivision->leadershipRoleIds();
-                $staffRoleId = (int) ($userDivision->staff_role_id ?? 0);
-                $query->where(function ($q) use ($user, $userDivision, $leadershipRoleIds, $staffRoleId) {
-                    $q->where(function ($sub) use ($userDivision, $leadershipRoleIds, $staffRoleId) {
-                        $sub->whereHas('category', fn ($c) => $c->where('division_id', $userDivision->id))
-                            ->where(function ($roleQ) use ($leadershipRoleIds, $staffRoleId) {
-                                if (!empty($leadershipRoleIds)) {
-                                    $roleQ->whereIn('current_role_id', $leadershipRoleIds);
-                                }
-                                if ($staffRoleId > 0) {
-                                    $roleQ->orWhere('current_role_id', $staffRoleId);
-                                }
-                            });
-                    })->orWhere('current_role_id', $user->role_id)
-                      ->orWhere('assigned_user_id', $user->id);
-                })->whereNotIn('status', ['resolved', 'rejected', 'closed']);
-            } elseif ($isHead) {
-                $query->where(function ($q) use ($user) {
-                    $q->where('current_role_id', $user->role_id)
-                        ->orWhere('assigned_user_id', $user->id);
-                })->whereNotIn('status', ['resolved', 'rejected', 'closed']);
-            } elseif ($user->role?->slug === 'admin-it') {
-                // Staff Admin IT hanya melihat tiket yang sudah diarahkan ke mereka
-                $query->where('assigned_user_id', $user->id)
-                    ->whereNotIn('status', ['resolved', 'rejected', 'closed']);
-            } elseif ($headId && !$user->isSuperuser()) {
-                $query->where('assigned_user_id', $user->id)
-                    ->whereNotIn('status', ['resolved', 'rejected', 'closed']);
-            } else {
-                $query->where(function ($q) use ($user) {
-                    $q->where('current_role_id', $user->role_id)
-                        ->orWhere('assigned_user_id', $user->id);
-                })->whereNotIn('status', ['resolved', 'rejected', 'closed']);
-            }
+            $query = Ticket::actionableQueryFor($user)
+                ->with(['creator', 'creatorRole', 'currentRole.priorityRoutes.user', 'category', 'assignedUser'])
+                ->withCount([
+                    'problems',
+                    'problems as done_problems_count' => fn ($problemQuery) => $problemQuery->where('is_done', true),
+                ]);
         }
 
         // Stats calculation based on scoped query before extra filters
@@ -866,6 +832,13 @@ class TicketController extends Controller
 
         if (!$user->role) {
             return back()->with('error', 'Akun Anda belum memiliki role. Hubungi admin IT.');
+        }
+
+        // Cegah double/triple klik: 1 submit per user dalam 20 detik untuk isi yang sama
+        $submitLockKey = 'ticket-submit:' . $user->id . ':' . md5(strtolower(trim($baseValidated['title'])) . '|' . $baseValidated['category_id']);
+        if (! Cache::add($submitLockKey, 1, now()->addSeconds(20))) {
+            return redirect()->route('tickets.my')
+                ->with('success', 'Tiket sedang diproses / sudah terkirim. Mohon tidak menekan Kirim berulang kali.');
         }
 
         $targetRole = $category->resolveTargetRoleFor($user->role)
