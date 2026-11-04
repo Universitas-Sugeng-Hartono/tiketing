@@ -100,7 +100,7 @@
             <section class="mb-3 overflow-hidden rounded-xl border border-slate-200 bg-white">
                 <div class="border-b border-slate-100 px-4 py-2.5">
                     <h2 class="text-sm font-bold text-slate-900">Ranking achievement</h2>
-                    <p class="text-[11px] text-slate-500">Staff IT, diurutkan dari poin terbanyak.</p>
+                    <p class="text-[11px] text-slate-500">Staff IT, diurutkan dari poin tiket yang sudah selesai.</p>
                 </div>
                 <ol class="flex items-end justify-center gap-2 px-3 pt-5 sm:gap-3 sm:px-6">
                     @foreach($podium as $index => $row)

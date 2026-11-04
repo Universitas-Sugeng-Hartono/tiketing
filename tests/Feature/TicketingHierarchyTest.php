@@ -921,7 +921,7 @@ class TicketingHierarchyTest extends TestCase
         $headBoard = $this->actingAs($head)->get(route('tickets.workload'));
         $headBoard->assertOk()
             ->assertSee('Ranking achievement')
-            ->assertSee('Staff IT, diurutkan dari poin terbanyak.')
+            ->assertSee('Staff IT, diurutkan dari poin tiket yang sudah selesai.')
             ->assertSeeInOrder(['Fajar Nugroho, S.T.', '8 poin', 'Bagas Setiawan, A.Md.Kom.', '3 poin', 'Nadia Kusuma, S.Kom.', '0 poin', 'Kontribusi pengerjaan kamu'])
             ->assertSee('Hijau muda ≈ 10% progres');
         $this->assertSame(1, substr_count($headBoard->getContent(), 'rank-bar rank-bar-1'));

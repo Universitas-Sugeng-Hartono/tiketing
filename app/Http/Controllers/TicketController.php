@@ -413,7 +413,10 @@ class TicketController extends Controller
                 ->whereHas('role', fn ($query) => $query->whereIn('slug', $itSlugs))
                 ->get();
 
-            return $people->map(function ($person) use ($tickets) {
+            // Poin ranking = tiket selesai (sama seperti Staff Progres), bukan tiket masih terbuka
+            $earnedPoints = $this->earnedAchievementPointsByAssignee($people->pluck('id'));
+
+            return $people->map(function ($person) use ($tickets, $earnedPoints) {
                 $items = $tickets->where('assigned_user_id', $person->id);
 
                 return [
@@ -422,7 +425,7 @@ class TicketController extends Controller
                     'initials' => $person->initials(),
                     'avatar_url' => $person->avatar_url,
                     'color' => ['#6366f1', '#22c55e', '#f59e0b', '#ec4899', '#0ea5e9', '#14b8a6'][$person->id % 6],
-                    'points' => (int) $items->sum(fn (Ticket $ticket) => (int) $ticket->achievement_points),
+                    'points' => (int) ($earnedPoints[$person->id] ?? 0),
                     'tickets' => $items->count(),
                 ];
             })->sort(fn (array $left, array $right) => $right['points'] <=> $left['points'] ?: strcmp($left['name'], $right['name']))
@@ -1117,13 +1120,13 @@ class TicketController extends Controller
     public function updateAchievement(Request $request, Ticket $ticket)
     {
         $user = Auth::user()->load('role');
-        if (!$ticket->canSetAchievementPoints($user)) {
-            return back()->with('error', 'Hanya kepala role yang dapat mengatur poin achievement.');
-        }
-
         $points = (int) $request->validate([
             'achievement_points' => ['required', 'integer', 'min:1', 'max:10'],
         ])['achievement_points'];
+
+        if (!$ticket->canSetAchievementPoints($user)) {
+            return back()->with('error', 'Hanya kepala role yang dapat mengatur poin achievement.');
+        }
 
         $ticket->update(['achievement_points' => $points]);
 
@@ -1766,12 +1769,21 @@ class TicketController extends Controller
         ]);
     }
 
-    private function staffProgressForRole(Role $role, User $head)
+    /**
+     * Total poin achievement yang sudah diperoleh staff (hanya tiket selesai).
+     *
+     * @param  iterable<int|string>  $assigneeIds
+     * @return \Illuminate\Support\Collection<int|string, int|string>
+     */
+    private function earnedAchievementPointsByAssignee(iterable $assigneeIds): \Illuminate\Support\Collection
     {
-        $staffUsers = $role->assignableStaffUsers();
-        $earnedPoints = Ticket::query()
-            ->where('current_role_id', $role->id)
-            ->whereIn('assigned_user_id', $staffUsers->pluck('id'))
+        $ids = collect($assigneeIds)->filter()->map(fn ($id) => (int) $id)->unique()->values();
+        if ($ids->isEmpty()) {
+            return collect();
+        }
+
+        return Ticket::query()
+            ->whereIn('assigned_user_id', $ids)
             ->whereNotNull('achievement_points')
             ->where(function ($query) {
                 $query->where('work_status', 'finished')->orWhereNotNull('finished_at');
@@ -1779,6 +1791,12 @@ class TicketController extends Controller
             ->groupBy('assigned_user_id')
             ->selectRaw('assigned_user_id, SUM(achievement_points) as total')
             ->pluck('total', 'assigned_user_id');
+    }
+
+    private function staffProgressForRole(Role $role, User $head)
+    {
+        $staffUsers = $role->assignableStaffUsers();
+        $earnedPoints = $this->earnedAchievementPointsByAssignee($staffUsers->pluck('id'));
 
         $openTickets = Ticket::query()
             ->where('current_role_id', $role->id)
