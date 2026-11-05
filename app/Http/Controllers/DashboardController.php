@@ -8,20 +8,29 @@ use App\Models\Ticket;
 use App\Models\TicketCategory;
 use App\Models\TicketLog;
 use App\Models\User;
+use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 
 class DashboardController extends Controller
 {
-    public function index()
+    public function index(Request $request)
     {
         $user = Auth::user()->load(['role.parent', 'role.children', 'supervisor']);
         $role = $user->role;
+        $requester = trim((string) $request->query('requester', ''));
+        $search = trim((string) $request->query('search', ''));
 
-        // Antrian yang perlu tindakan user (dashboard), bukan seluruh antrean role
         $incomingTickets = Ticket::actionableQueryFor($user)
             ->with(['creator', 'creatorRole', 'category', 'currentRole', 'assignedUser'])
+            ->when($requester !== '', fn ($query) => $query->whereHas('creator', fn ($creatorQuery) => $creatorQuery->where('name', 'like', "%{$requester}%")))
+            ->when($search !== '', function ($query) use ($search) {
+                $query->where(function ($inner) use ($search) {
+                    $inner->where('ticket_number', 'like', "%{$search}%")
+                        ->orWhere('title', 'like', "%{$search}%");
+                });
+            })
             ->latest()
-            ->take(8)
+            ->take(25)
             ->get();
 
         $activeIncomingCount = Ticket::actionableQueryFor($user)->count();
@@ -107,7 +116,9 @@ class DashboardController extends Controller
             'recentLogs',
             'topCategories',
             'stats',
-            'categories'
+            'categories',
+            'requester',
+            'search'
         ));
     }
 }

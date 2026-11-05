@@ -181,6 +181,7 @@
                     <th class="py-3.5 px-4 min-w-[150px]">Customer</th>
                     <th class="py-3.5 px-4 min-w-[150px]">Channel</th>
                     <th class="py-3.5 px-4 min-w-[140px]">Priority</th>
+                    <th class="py-3.5 px-4 min-w-[140px]">Progres</th>
                     <th class="py-3.5 px-4 min-w-[100px]">Status</th>
                     <th class="py-3.5 px-4 min-w-[110px] text-right">Action</th>
                 </tr>
@@ -309,6 +310,10 @@
                         </td>
 
                         <td class="py-4 px-4 align-top whitespace-nowrap">
+                            @include('tickets.partials.progress-meter', ['ticket' => $ticket])
+                        </td>
+
+                        <td class="py-4 px-4 align-top whitespace-nowrap">
                             <span class="inline-block text-[11px] font-medium px-2.5 py-1 rounded-md border {{ $statusColors[$ticket->status] ?? 'bg-slate-100 text-slate-700' }}">
                                 {{ $ticket->statusLabel() }}
                             </span>
@@ -324,7 +329,7 @@
                     </tr>
                 @empty
                     <tr>
-                        <td colspan="7" class="py-12 px-4 text-center">
+                        <td colspan="8" class="py-12 px-4 text-center">
                             <div class="max-w-xs mx-auto text-center">
                                 <span class="w-10 h-10 rounded-2xl bg-emerald-50 text-emerald-600 flex items-center justify-center mx-auto mb-2">✓</span>
                                 <p class="text-xs font-semibold text-slate-700">Semua tiket telah dibagikan ke staf</p>

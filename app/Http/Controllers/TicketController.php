@@ -25,6 +25,11 @@ class TicketController extends Controller
         $user = Auth::user()->load('role.parent');
         $search = trim((string) $request->query('search', ''));
         $categoryId = $request->query('category_id');
+        $status = $request->query('status');
+        $perPage = (int) $request->query('per_page', 25);
+        if (! in_array($perPage, [25, 50, 100], true)) {
+            $perPage = 25;
+        }
 
         $query = Ticket::with(['category', 'currentRole', 'creatorRole', 'assignedUser', 'logs'])
             ->where('creator_id', $user->id)
@@ -41,7 +46,11 @@ class TicketController extends Controller
             $query->where('category_id', $categoryId);
         }
 
-        $tickets = $query->latest()->get();
+        if ($status && in_array($status, ['open', 'in_progress', 'escalated', 'waiting_next_approval'], true)) {
+            $query->where('status', $status);
+        }
+
+        $tickets = $query->latest()->paginate($perPage)->withQueryString();
         $categories = TicketCategory::orderBy('name')->get();
 
         return view('tickets.my', compact(
@@ -49,6 +58,8 @@ class TicketController extends Controller
             'user',
             'search',
             'categoryId',
+            'status',
+            'perPage',
             'categories'
         ));
     }
@@ -60,17 +71,59 @@ class TicketController extends Controller
     {
         $user = Auth::user()->load('role.parent');
         $search = trim((string) $request->query('search', ''));
+        $requester = trim((string) $request->query('requester', ''));
         $categoryId = $request->query('category_id');
+        $status = $request->query('status', 'resolved');
+        $dateFrom = $request->query('date_from');
+        $dateTo = $request->query('date_to');
+        $perPage = (int) $request->query('per_page', 25);
+        if (! in_array($perPage, [25, 50, 100], true)) {
+            $perPage = 25;
+        }
 
-        $query = Ticket::with(['category', 'currentRole', 'creatorRole', 'assignedUser', 'logs.user.role'])
-            ->where('status', 'resolved')
-            ->where(function ($q) use ($user) {
+        $allowedStatuses = ['resolved', 'rejected', 'closed'];
+        if ($status !== 'all' && ! in_array($status, $allowedStatuses, true)) {
+            $status = 'resolved';
+        }
+
+        $query = Ticket::with(['creator', 'category', 'currentRole', 'creatorRole', 'assignedUser', 'logs.user.role']);
+
+        if (! $user->isSuperuser()) {
+            $scopeRoleIds = array_filter([(int) $user->role_id]);
+            $leaderDivision = DivisionMember::query()
+                ->with('division')
+                ->where('user_id', $user->id)
+                ->whereIn('position', ['head', 'spv'])
+                ->first()
+                ?->division;
+
+            if ($leaderDivision) {
+                foreach (['head_role_id', 'spv_role_id', 'staff_role_id'] as $column) {
+                    if ($leaderDivision->{$column}) {
+                        $scopeRoleIds[] = (int) $leaderDivision->{$column};
+                    }
+                }
+            }
+
+            $scopeRoleIds = array_values(array_unique($scopeRoleIds));
+            $query->where(function ($q) use ($user, $scopeRoleIds) {
                 $q->where('creator_id', $user->id)
                     ->orWhere('assigned_user_id', $user->id);
-                if ($user->role_id) {
-                    $q->orWhere('current_role_id', $user->role_id);
+                if ($scopeRoleIds !== []) {
+                    $q->orWhereIn('current_role_id', $scopeRoleIds);
                 }
             });
+        }
+
+        if ($status === 'all') {
+            $query->whereIn('status', $allowedStatuses);
+        } else {
+            $query->where('status', $status);
+        }
+
+        if ($requester !== '') {
+            $query->whereHas('creator', fn ($creator) => $creator->where('name', 'like', "%{$requester}%"));
+        }
 
         if ($search !== '') {
             $query->where(function ($q) use ($search) {
@@ -83,14 +136,26 @@ class TicketController extends Controller
             $query->where('category_id', $categoryId);
         }
 
-        $tickets = $query->latest('resolved_at')->latest()->get();
+        if ($dateFrom) {
+            $query->whereDate('updated_at', '>=', $dateFrom);
+        }
+        if ($dateTo) {
+            $query->whereDate('updated_at', '<=', $dateTo);
+        }
+
+        $tickets = $query->latest('resolved_at')->latest()->paginate($perPage)->withQueryString();
         $categories = TicketCategory::orderBy('name')->get();
 
         return view('tickets.history', compact(
             'tickets',
             'user',
             'search',
+            'requester',
             'categoryId',
+            'status',
+            'dateFrom',
+            'dateTo',
+            'perPage',
             'categories'
         ));
     }
@@ -389,13 +454,26 @@ class TicketController extends Controller
     /**
      * Papan pekerjaan yang sedang dikerjakan tiap divisi, untuk pemohon tiket.
      */
-    public function divisionWorkload()
+    public function divisionWorkload(Request $request)
     {
         $user = Auth::user()->load('role');
-        $groups = Ticket::with(['currentRole', 'assignedUser', 'category'])
+        $search = trim((string) $request->query('search', ''));
+
+        $query = Ticket::with(['currentRole', 'assignedUser', 'category'])
             ->whereNotIn('status', ['resolved', 'rejected', 'closed'])
-            ->latest('updated_at')
-            ->get()
+            ->latest('updated_at');
+
+        if ($search !== '') {
+            $query->where(function ($q) use ($search) {
+                $q->where('ticket_number', 'like', "%{$search}%")
+                    ->orWhere('title', 'like', "%{$search}%")
+                    ->orWhereHas('assignedUser', fn ($uq) => $uq->where('name', 'like', "%{$search}%"))
+                    ->orWhereHas('category', fn ($cq) => $cq->where('name', 'like', "%{$search}%"))
+                    ->orWhereHas('currentRole', fn ($rq) => $rq->where('name', 'like', "%{$search}%"));
+            });
+        }
+
+        $groups = $query->get()
             ->groupBy(fn (Ticket $ticket) => $ticket->currentRole?->name ?? 'Tanpa divisi')
             ->sortKeys();
 
@@ -450,7 +528,7 @@ class TicketController extends Controller
 
         $myContribution = $this->buildPersonalContribution($user);
 
-        return view('tickets.workload', compact('user', 'groups', 'ranking', 'canSeeFullRanking', 'myContribution'));
+        return view('tickets.workload', compact('user', 'groups', 'ranking', 'canSeeFullRanking', 'myContribution', 'search'));
     }
 
     /**
@@ -981,6 +1059,34 @@ class TicketController extends Controller
             'Content-Type' => $mimeType,
             'Content-Disposition' => 'inline; filename="' . addslashes($filename) . '"',
         ]);
+    }
+
+    public function previewProof(Ticket $ticket)
+    {
+        if (!$ticket->completion_proof_path || !Storage::disk('public')->exists($ticket->completion_proof_path)) {
+            abort(404, 'Bukti pengerjaan tidak ditemukan.');
+        }
+
+        $fullPath = Storage::disk('public')->path($ticket->completion_proof_path);
+        $mimeType = Storage::disk('public')->mimeType($ticket->completion_proof_path) ?? 'application/octet-stream';
+        $filename = $ticket->completion_proof_name ?? basename($ticket->completion_proof_path);
+
+        return response()->file($fullPath, [
+            'Content-Type' => $mimeType,
+            'Content-Disposition' => 'inline; filename="' . addslashes($filename) . '"',
+        ]);
+    }
+
+    public function downloadProof(Ticket $ticket)
+    {
+        if (!$ticket->completion_proof_path || !Storage::disk('public')->exists($ticket->completion_proof_path)) {
+            abort(404, 'Bukti pengerjaan tidak ditemukan.');
+        }
+
+        return Storage::disk('public')->download(
+            $ticket->completion_proof_path,
+            $ticket->completion_proof_name ?? basename($ticket->completion_proof_path)
+        );
     }
 
     public function downloadAttachment(Ticket $ticket)
@@ -1704,12 +1810,24 @@ class TicketController extends Controller
             'progress_percent' => [$weighted ? 'nullable' : 'required', 'integer', 'between:0,100'],
             'note' => ['nullable', 'string', 'max:500'],
             'work_status' => ['nullable', 'in:delivered,in_progress,blocked,finished'],
+            'completion_proof' => ['nullable', 'file', 'mimes:pdf,doc,docx,xls,xlsx,jpg,jpeg,png,zip', 'max:10240'],
         ]);
 
         $note = trim((string) ($validated['note'] ?? ''));
         $workStatus = $validated['work_status'] ?? null;
         if ($workStatus === 'blocked' && $note === '') {
             return back()->with('error', 'Blocked berarti ada masalah saat pengerjaan. Tuliskan masalahnya di catatan.')->withInput();
+        }
+
+        if ($request->hasFile('completion_proof')) {
+            $file = $request->file('completion_proof');
+            if ($ticket->completion_proof_path && Storage::disk('public')->exists($ticket->completion_proof_path)) {
+                Storage::disk('public')->delete($ticket->completion_proof_path);
+            }
+            $ticket->forceFill([
+                'completion_proof_path' => $file->store('completion-proofs', 'public'),
+                'completion_proof_name' => $file->getClientOriginalName(),
+            ])->save();
         }
 
         if ($weighted) {

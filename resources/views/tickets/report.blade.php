@@ -27,6 +27,16 @@
         Laporan bulanan hanya untuk Kepala/SPV divisi atau kepala role.
     </div>
 @else
+    <div class="mb-4 rounded-xl border border-sky-200 bg-sky-50 px-4 py-3 text-xs text-sky-900">
+        <p class="font-semibold mb-1">Cara baca rekap bulan ini</p>
+        <ul class="list-disc pl-4 space-y-0.5 text-sky-800/90">
+            <li><strong>Finished</strong> = staff menandai pekerjaan selesai (belum tentu tiket ditutup final).</li>
+            <li><strong>Selesai ditutup (Final)</strong> = tiket di-resolve/closed; masuk riwayat final.</li>
+            <li><strong>In progress / Delivered / Blocked</strong> = masih aktif di bulan ini, tidak hilang hanya karena ada yang Final.</li>
+            <li>Kartu di atas memecah status terpisah — data non-final tetap dihitung di kolomnya sendiri.</li>
+        </ul>
+    </div>
+
     <div class="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-5">
         @foreach([
             ['Tiket', $summary['tickets'], 'text-slate-900'],
@@ -35,7 +45,7 @@
             ['Blocked', $summary['blocked'], 'text-rose-700'],
             ['Delivered', $summary['delivered'], 'text-indigo-700'],
             ['Finished', $summary['finished'], 'text-emerald-700'],
-            ['Selesai ditutup', $summary['resolved'], 'text-slate-700'],
+            ['Selesai ditutup (Final)', $summary['resolved'], 'text-slate-700'],
             ['Ditolak', $summary['rejected'], 'text-rose-700'],
         ] as [$label, $value, $color])
             <div class="bg-white rounded-xl border border-slate-200 px-4 py-3">

@@ -10,9 +10,22 @@
     ];
 @endphp
 
-<div class="mb-5">
-    <h1 class="text-lg font-bold text-slate-900">Pekerjaan Divisi</h1>
-    <p class="text-xs text-slate-500">Pekerjaan yang sedang dikerjakan IT dan setiap divisi.</p>
+<div class="mb-5 flex flex-col sm:flex-row sm:items-end justify-between gap-3">
+    <div>
+        <h1 class="text-lg font-bold text-slate-900">Pekerjaan Divisi</h1>
+        <p class="text-xs text-slate-500">Pekerjaan yang sedang dikerjakan IT dan setiap divisi.</p>
+    </div>
+    <form method="GET" action="{{ route('tickets.workload') }}" class="flex items-center gap-2 w-full sm:w-auto">
+        <input type="text" name="search" value="{{ $search ?? '' }}"
+               placeholder="Cari no tiket, judul, staff, kategori..."
+               class="flex-1 sm:w-72 px-3 py-2 rounded-lg border border-slate-200 bg-white text-xs focus:outline-none focus:border-slate-900">
+        <button type="submit" class="px-3.5 py-2 rounded-lg bg-slate-900 hover:bg-slate-800 text-white text-xs font-semibold">
+            Cari
+        </button>
+        @if(!empty($search))
+            <a href="{{ route('tickets.workload') }}" class="px-3 py-2 rounded-lg border border-slate-200 text-xs text-slate-600 hover:bg-slate-50">Reset</a>
+        @endif
+    </form>
 </div>
 
 <style>
@@ -256,7 +269,11 @@
     </section>
 @empty
     <div class="rounded-xl border border-slate-200 bg-white px-5 py-8 text-center text-xs text-slate-400">
-        Belum ada pekerjaan yang sedang dikerjakan.
+        @if(!empty($search))
+            Tidak ada pekerjaan yang cocok dengan pencarian <strong>{{ $search }}</strong>.
+        @else
+            Belum ada pekerjaan yang sedang dikerjakan.
+        @endif
     </div>
 @endforelse
 @endsection
