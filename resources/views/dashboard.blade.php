@@ -449,6 +449,28 @@
                     </a>
                 </div>
 
+                <form action="{{ route('dashboard') }}" method="GET" class="px-5 py-3 border-b border-slate-100 bg-slate-50/50 flex flex-col lg:flex-row items-stretch lg:items-center gap-2">
+                    <div class="relative flex-1 max-w-md">
+                        <svg class="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                            <path stroke-linecap="round" stroke-linejoin="round" d="M21 21l-5.197-5.197m0 0A7.5 7.5 0 105.196 5.196a7.5 7.5 0 0010.607 10.607z" />
+                        </svg>
+                        <input type="text" name="search" value="{{ $search ?? '' }}"
+                               placeholder="Cari no. tiket atau judul..."
+                               class="w-full pl-9 pr-3 py-2 rounded-lg bg-white border border-slate-200 text-xs focus:outline-none focus:border-slate-900">
+                    </div>
+                    <input type="text" name="requester" value="{{ $requester ?? '' }}"
+                           placeholder="Nama pemohon..."
+                           class="px-3 py-2 rounded-lg bg-white border border-slate-200 text-xs text-slate-700 focus:outline-none focus:border-slate-900">
+                    <button type="submit" class="px-3.5 py-2 rounded-lg bg-slate-900 hover:bg-slate-800 text-white text-xs font-medium transition">
+                        Filter
+                    </button>
+                    @if(($search ?? '') !== '' || ($requester ?? '') !== '')
+                        <a href="{{ route('dashboard') }}" class="px-3 py-2 rounded-lg bg-white border border-slate-200 text-xs text-slate-600 hover:bg-slate-100">
+                            Reset
+                        </a>
+                    @endif
+                </form>
+
                 <div class="overflow-x-auto">
                     <table class="w-full text-left border-collapse">
                         <thead>
@@ -457,6 +479,7 @@
                                 <th class="py-3 px-4">Pemohon</th>
                                 <th class="py-3 px-4">Judul Tiket</th>
                                 <th class="py-3 px-4">Tahap Proses</th>
+                                <th class="py-3 px-4">Progres</th>
                                 <th class="py-3 px-4">Status</th>
                                 <th class="py-3 px-4 text-right">Aksi</th>
                             </tr>
@@ -482,6 +505,9 @@
                                         <span class="text-[11px] text-slate-600">Tahap {{ $t->approval_step }} ({{ $t->currentRole?->name }})</span>
                                     </td>
                                     <td class="py-3 px-4 whitespace-nowrap">
+                                        @include('tickets.partials.progress-meter', ['ticket' => $t])
+                                    </td>
+                                    <td class="py-3 px-4 whitespace-nowrap">
                                         <span class="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-[10px] font-semibold border {{ $sBadge['bg'] }} {{ $sBadge['text'] }} {{ $sBadge['border'] }}">
                                             <span class="w-1.5 h-1.5 rounded-full {{ $sBadge['dot'] }}"></span>
                                             {{ $sBadge['label'] }}
@@ -496,8 +522,12 @@
                                 </tr>
                             @empty
                                 <tr>
-                                    <td colspan="6" class="py-10 text-center text-xs text-slate-400">
-                                        Belum ada tiket masuk di antrean Role {{ $role?->name }}.
+                                    <td colspan="7" class="py-10 text-center text-xs text-slate-400">
+                                        @if(($search ?? '') !== '' || ($requester ?? '') !== '')
+                                            Tidak ada tiket berjalan untuk filter ini.
+                                        @else
+                                            Belum ada tiket masuk di antrean Role {{ $role?->name }}.
+                                        @endif
                                     </td>
                                 </tr>
                             @endforelse

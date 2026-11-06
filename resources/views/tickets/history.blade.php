@@ -6,7 +6,7 @@
     <div>
         <h1 class="text-lg font-bold text-slate-900">Riwayat Tiket (Sudah Selesai)</h1>
         <p class="text-xs text-slate-500">
-            Tiket selesai yang Anda ajukan, atau yang diselesaikan pada role Anda.
+            Tiket selesai pada divisi Anda, yang Anda ajukan, atau yang diselesaikan pada role Anda.
         </p>
     </div>
 
@@ -19,20 +19,30 @@
 <!-- Card Utama: Toolbar Search/Dropdown + Tabel Riwayat Approve -->
 <div class="bg-white rounded-xl border border-slate-200 overflow-hidden shadow-2xs">
     <!-- Toolbar Pencarian & Dropdown Kategori -->
-    <form action="{{ route('tickets.history') }}" method="GET" class="p-4 border-b border-slate-100 bg-slate-50/50 flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3">
-        <div class="relative flex-1 max-w-md">
-            <svg class="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
-                <path stroke-linecap="round" stroke-linejoin="round" d="M21 21l-5.197-5.197m0 0A7.5 7.5 0 105.196 5.196a7.5 7.5 0 0010.607 10.607z" />
-            </svg>
-            <input type="text" name="search" value="{{ $search }}"
-                   placeholder="Cari No. Tiket atau Judul Tiket yang sudah di-approve..."
-                   class="w-full pl-9 pr-3 py-2 rounded-lg bg-white border border-slate-200 text-xs focus:outline-none focus:border-slate-900">
-        </div>
+    <form action="{{ route('tickets.history') }}" method="GET" class="p-4 border-b border-slate-100 bg-slate-50/50 space-y-3">
+        <div class="flex flex-col lg:flex-row items-stretch lg:items-center gap-2">
+            <div class="relative flex-1 max-w-md">
+                <svg class="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                    <path stroke-linecap="round" stroke-linejoin="round" d="M21 21l-5.197-5.197m0 0A7.5 7.5 0 105.196 5.196a7.5 7.5 0 0010.607 10.607z" />
+                </svg>
+                <input type="text" name="search" value="{{ $search }}"
+                       placeholder="Cari No. Tiket atau Judul..."
+                       class="w-full pl-9 pr-3 py-2 rounded-lg bg-white border border-slate-200 text-xs focus:outline-none focus:border-slate-900">
+            </div>
 
-        <div class="flex items-center gap-2">
-            <select name="category_id" onchange="this.form.submit()"
-                    class="px-3 py-2 rounded-lg bg-white border border-slate-200 text-xs text-slate-700 focus:outline-none focus:border-slate-900">
-                <option value="">Semua Kategori Layanan</option>
+            <input type="text" name="requester" value="{{ $requester ?? '' }}"
+                   placeholder="Nama pemohon..."
+                   class="px-3 py-2 rounded-lg bg-white border border-slate-200 text-xs text-slate-700 focus:outline-none focus:border-slate-900">
+
+            <select name="status" class="px-3 py-2 rounded-lg bg-white border border-slate-200 text-xs text-slate-700 focus:outline-none focus:border-slate-900">
+                <option value="resolved" {{ ($status ?? 'resolved') === 'resolved' ? 'selected' : '' }}>Selesai / Final</option>
+                <option value="rejected" {{ ($status ?? '') === 'rejected' ? 'selected' : '' }}>Ditolak</option>
+                <option value="closed" {{ ($status ?? '') === 'closed' ? 'selected' : '' }}>Ditutup</option>
+                <option value="all" {{ ($status ?? '') === 'all' ? 'selected' : '' }}>Semua status akhir</option>
+            </select>
+
+            <select name="category_id" class="px-3 py-2 rounded-lg bg-white border border-slate-200 text-xs text-slate-700 focus:outline-none focus:border-slate-900">
+                <option value="">Semua Kategori</option>
                 @foreach($categories as $cat)
                     <option value="{{ $cat->id }}" {{ (string) $categoryId === (string) $cat->id ? 'selected' : '' }}>
                         {{ $cat->name }}
@@ -40,17 +50,31 @@
                 @endforeach
             </select>
 
+            <input type="date" name="date_from" value="{{ $dateFrom ?? '' }}"
+                   class="px-3 py-2 rounded-lg bg-white border border-slate-200 text-xs text-slate-700 focus:outline-none focus:border-slate-900"
+                   title="Dari tanggal">
+            <input type="date" name="date_to" value="{{ $dateTo ?? '' }}"
+                   class="px-3 py-2 rounded-lg bg-white border border-slate-200 text-xs text-slate-700 focus:outline-none focus:border-slate-900"
+                   title="Sampai tanggal">
+
+            <select name="per_page" class="px-3 py-2 rounded-lg bg-white border border-slate-200 text-xs text-slate-700 focus:outline-none focus:border-slate-900">
+                <option value="25" {{ (int) ($perPage ?? 25) === 25 ? 'selected' : '' }}>25 / halaman</option>
+                <option value="50" {{ (int) ($perPage ?? 25) === 50 ? 'selected' : '' }}>50 / halaman</option>
+                <option value="100" {{ (int) ($perPage ?? 25) === 100 ? 'selected' : '' }}>100 / halaman</option>
+            </select>
+
             <button type="submit" class="px-3.5 py-2 rounded-lg bg-slate-900 hover:bg-slate-800 text-white text-xs font-medium transition">
                 Filter
             </button>
 
-            @if($search || $categoryId)
+            @if($search || ($requester ?? '') !== '' || $categoryId || ($status ?? 'resolved') !== 'resolved' || ($dateFrom ?? null) || ($dateTo ?? null) || (int) ($perPage ?? 25) !== 25)
                 <a href="{{ route('tickets.history') }}"
                    class="px-3 py-2 rounded-lg bg-white border border-slate-200 text-xs text-slate-600 hover:bg-slate-100">
                     Reset
                 </a>
             @endif
         </div>
+        <p class="text-[11px] text-slate-400">Status Final = tiket selesai ditutup. Filter "Semua status akhir" juga menampilkan ditolak/ditutup.</p>
     </form>
 
     <!-- Tabel Riwayat Tiket yang Sudah Di-Approve -->
@@ -59,6 +83,7 @@
             <thead>
                 <tr class="border-b border-slate-200 bg-slate-50/80 text-[11px] font-semibold uppercase tracking-wider text-slate-500">
                     <th class="py-3 px-4 w-44">No. Tiket</th>
+                    <th class="py-3 px-4">Pemohon</th>
                     <th class="py-3 px-4">Judul & Kategori Tiket</th>
                     <th class="py-3 px-4">Proses Approval (Hirarki)</th>
                     <th class="py-3 px-4 w-36">Status Akhir</th>
@@ -80,6 +105,11 @@
                             <span class="text-[11px] text-slate-400">
                                 Selesai {{ ($ticket->resolved_at ?? $ticket->updated_at)->format('d M Y') }}
                             </span>
+                        </td>
+
+                        <td class="py-3.5 px-4">
+                            <span class="font-medium text-slate-800 block">{{ $ticket->creator?->name ?? '—' }}</span>
+                            <span class="text-[11px] text-slate-400">{{ $ticket->creatorRole?->name }}</span>
                         </td>
 
                         <!-- 2. Judul & Kategori -->
@@ -112,8 +142,15 @@
 
                         <!-- 4. Status Akhir -->
                         <td class="py-3.5 px-4 whitespace-nowrap">
-                            <span class="inline-block text-[11px] font-medium px-2.5 py-0.5 rounded-md border bg-emerald-50 text-emerald-700 border-emerald-200">
-                                ✓ Approved / Selesai
+                            @php
+                                $historyBadge = match ($ticket->status) {
+                                    'rejected' => ['bg-rose-50 text-rose-700 border-rose-200', 'Ditolak'],
+                                    'closed' => ['bg-slate-100 text-slate-700 border-slate-200', 'Ditutup'],
+                                    default => ['bg-emerald-50 text-emerald-700 border-emerald-200', '✓ Final / Selesai'],
+                                };
+                            @endphp
+                            <span class="inline-block text-[11px] font-medium px-2.5 py-0.5 rounded-md border {{ $historyBadge[0] }}">
+                                {{ $historyBadge[1] }}
                             </span>
                         </td>
 
@@ -148,13 +185,19 @@
                     </tr>
                 @empty
                     <tr>
-                        <td colspan="6" class="py-10 px-4 text-center text-xs text-slate-400">
-                            Belum ada riwayat tiket dengan status <strong>Approved / Selesai</strong>.
+                        <td colspan="7" class="py-10 px-4 text-center text-xs text-slate-400">
+                            Tidak ada riwayat tiket untuk filter ini.
                         </td>
                     </tr>
                 @endforelse
             </tbody>
         </table>
     </div>
+
+    @if(method_exists($tickets, 'links'))
+        <div class="px-4 py-3 border-t border-slate-100 bg-slate-50/40">
+            {{ $tickets->links() }}
+        </div>
+    @endif
 </div>
 @endsection

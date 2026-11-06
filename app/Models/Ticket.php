@@ -70,6 +70,8 @@ class Ticket extends Model
         'description',
         'attachment_path',
         'attachment_name',
+        'completion_proof_path',
+        'completion_proof_name',
         'category_id',
         'priority',
         'priority_rank',
@@ -209,6 +211,16 @@ class Ticket extends Model
         }
         $ext = strtolower(pathinfo($this->attachment_name ?: $this->attachment_path, PATHINFO_EXTENSION));
         return in_array($ext, ['jpg', 'jpeg', 'png', 'gif', 'webp', 'svg'], true);
+    }
+
+    public function isImageProof(): bool
+    {
+        if (!$this->completion_proof_path) {
+            return false;
+        }
+        $ext = strtolower(pathinfo($this->completion_proof_name ?: $this->completion_proof_path, PATHINFO_EXTENSION));
+
+        return in_array($ext, ['jpg', 'jpeg', 'png', 'gif', 'webp'], true);
     }
 
     public function canReportProgress(User $user): bool
