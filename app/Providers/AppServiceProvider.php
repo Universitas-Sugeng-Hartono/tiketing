@@ -136,6 +136,7 @@ class AppServiceProvider extends ServiceProvider
                         'template_preview_url' => $cat->hasTemplate() ? route('categories.template.preview', $cat) : null,
                         'template_download_url' => $cat->hasTemplate() ? route('categories.template.download', $cat) : null,
                         'is_attachment_required' => (bool) $cat->is_attachment_required,
+                        'is_other' => $cat->isOther(),
                     ];
                 }
 

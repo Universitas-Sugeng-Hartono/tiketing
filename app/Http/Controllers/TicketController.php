@@ -10,10 +10,10 @@ use App\Models\TicketCategory;
 use App\Models\TicketLog;
 use App\Models\TicketProblem;
 use App\Models\User;
+use App\Support\Uploads;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Cache;
-use Illuminate\Support\Facades\Storage;
 
 class TicketController extends Controller
 {
@@ -895,11 +895,22 @@ class TicketController extends Controller
         $baseValidated = $request->validate([
             'title' => ['required', 'string', 'max:180'],
             'category_id' => ['required', 'exists:ticket_categories,id'],
+            'category_other' => ['nullable', 'string', 'max:120'],
             'description' => ['required', 'string', 'min:5'],
             'priority_rank' => ['required', 'integer', 'between:1,4'],
+            'due_date' => ['nullable', 'date', 'after_or_equal:today'],
         ]);
 
         $category = TicketCategory::with('initialTargetRole')->findOrFail($baseValidated['category_id']);
+        $categoryOther = trim((string) ($baseValidated['category_other'] ?? ''));
+        if ($category->isOther() && $categoryOther === '') {
+            return back()->withInput()->withErrors([
+                'category_other' => 'Isi nama kategori Other terlebih dahulu.',
+            ]);
+        }
+        if (! $category->isOther()) {
+            $categoryOther = '';
+        }
 
         $attachmentRules = $category->is_attachment_required
             ? ['required', 'file', 'mimes:pdf,doc,docx,xls,xlsx,jpg,jpeg,png,zip', 'max:10240']
@@ -953,7 +964,7 @@ class TicketController extends Controller
             $file = $request->file('attachment');
             $attachmentName = $file->getClientOriginalName();
             try {
-                $attachmentPath = $file->store('attachments', 'public');
+                $attachmentPath = Uploads::store($file, 'attachments');
             } catch (\Throwable $e) {
                 report($e);
 
@@ -970,11 +981,13 @@ class TicketController extends Controller
             try {
                 $ticket = Ticket::create([
                     'ticket_number' => Ticket::generateTicketNumber(),
+                    'public_token' => Ticket::generatePublicToken(),
                     'title' => $baseValidated['title'],
                     'description' => $baseValidated['description'],
                     'attachment_path' => $attachmentPath,
                     'attachment_name' => $attachmentName,
                     'category_id' => $category->id,
+                    'category_other' => $categoryOther !== '' ? $categoryOther : null,
                     'priority' => RolePriorityRoute::legacyPriority((int) $baseValidated['priority_rank']),
                     'priority_rank' => (int) $baseValidated['priority_rank'],
                     'workflow_type' => $category->workflow_type,
@@ -983,6 +996,7 @@ class TicketController extends Controller
                     'current_role_id' => $targetRole->id,
                     'assigned_user_id' => $assignedUser?->id,
                     'status' => 'open',
+                    'due_date' => $baseValidated['due_date'] ?? null,
                     'approval_step' => 1,
                 ]);
             } catch (\Illuminate\Database\UniqueConstraintViolationException $e) {
@@ -1008,23 +1022,161 @@ class TicketController extends Controller
             ->with('success', "Tiket #{$ticket->ticket_number} berhasil dibuat dan sedang diproses pada Role {$targetRole->name}.");
     }
 
+    public function calendar(Request $request)
+    {
+        $user = Auth::user()->load('role');
+        $month = (string) $request->query('month', now()->format('Y-m'));
+        if (! preg_match('/^\d{4}-\d{2}$/', $month)) {
+            $month = now()->format('Y-m');
+        }
+
+        $start = \Carbon\Carbon::createFromFormat('Y-m-d', $month.'-01')->startOfMonth();
+        $end = $start->copy()->endOfMonth();
+        $gridStart = $start->copy()->startOfWeek(\Carbon\Carbon::MONDAY);
+        $gridEnd = $end->copy()->endOfWeek(\Carbon\Carbon::SUNDAY);
+
+        $staffUsers = $this->calendarStaffUsers($user);
+        $staffIds = $staffUsers->pluck('id')->map(fn ($id) => (int) $id)->values();
+        $selectedStaffId = (int) $request->query('staff_id', 0);
+        if ($selectedStaffId > 0 && ! $staffIds->contains($selectedStaffId)) {
+            $selectedStaffId = 0;
+        }
+        $filterStaffIds = $selectedStaffId > 0
+            ? collect([$selectedStaffId])
+            : $staffIds;
+
+        $applyVisibility = function ($query) use ($user) {
+            if ($user->isSuperuser()) {
+                return $query;
+            }
+
+            $division = $user->division();
+            if ($division && $user->isDivisionLeader($division)) {
+                return $query->where(function ($q) use ($user, $division) {
+                    $q->whereHas('category', fn ($c) => $c->where('division_id', $division->id))
+                        ->orWhere('creator_id', $user->id)
+                        ->orWhere('assigned_user_id', $user->id);
+                });
+            }
+
+            return $query->where(function ($q) use ($user) {
+                $q->where('creator_id', $user->id)
+                    ->orWhere('assigned_user_id', $user->id);
+            });
+        };
+
+        $dueQuery = Ticket::with(['assignedUser', 'category', 'creator', 'currentRole'])
+            ->whereNotNull('due_date')
+            ->whereBetween('due_date', [$gridStart->toDateString(), $gridEnd->toDateString()]);
+        $applyVisibility($dueQuery);
+
+        if ($filterStaffIds->isNotEmpty()) {
+            $dueQuery->whereIn('assigned_user_id', $filterStaffIds->all());
+        } else {
+            $dueQuery->whereRaw('1 = 0');
+        }
+
+        $dueTickets = $dueQuery->orderBy('due_date')->orderBy('priority_rank')->get();
+        $dueByDate = $dueTickets->groupBy(fn (Ticket $ticket) => $ticket->due_date->toDateString());
+
+        // Aktivitas operasional staff (bukan aksi pimpinan/disposisi/approval)
+        $workActions = [
+            'in_progress',
+            'resolved',
+            'reopened',
+            'comment',
+            'problems_set',
+            'problem_done',
+            'problem_reopened',
+            'progress_reported',
+        ];
+
+        $activityQuery = TicketLog::with(['user', 'ticket.category'])
+            ->whereIn('action', $workActions)
+            ->whereBetween('created_at', [
+                $gridStart->copy()->startOfDay(),
+                $gridEnd->copy()->endOfDay(),
+            ])
+            ->whereHas('ticket', function ($q) use ($applyVisibility) {
+                $applyVisibility($q);
+            })
+            ->orderBy('created_at');
+
+        if ($filterStaffIds->isNotEmpty()) {
+            $activityQuery->whereIn('user_id', $filterStaffIds->all());
+        } else {
+            $activityQuery->whereRaw('1 = 0');
+        }
+
+        $activities = $activityQuery->get();
+        $activitiesByDate = $activities->groupBy(fn (TicketLog $log) => $log->created_at->toDateString());
+
+        $days = [];
+        for ($day = $gridStart->copy(); $day->lte($gridEnd); $day->addDay()) {
+            $key = $day->toDateString();
+            $days[] = [
+                'date' => $key,
+                'in_month' => $day->month === $start->month,
+                'is_today' => $day->isToday(),
+                'tickets' => $dueByDate->get($key, collect()),
+                'activities' => $activitiesByDate->get($key, collect()),
+            ];
+        }
+
+        return view('tickets.calendar', [
+            'user' => $user,
+            'month' => $month,
+            'monthLabel' => $start->locale('id')->translatedFormat('F Y'),
+            'prevMonth' => $start->copy()->subMonth()->format('Y-m'),
+            'nextMonth' => $start->copy()->addMonth()->format('Y-m'),
+            'days' => $days,
+            'ticketCount' => $dueTickets->count(),
+            'activityCount' => $activities->count(),
+            'staffUsers' => $staffUsers,
+            'selectedStaffId' => $selectedStaffId,
+        ]);
+    }
+
+    /**
+     * Staff yang ditampilkan di kalender (fokus pelaksana, bukan pimpinan).
+     */
+    private function calendarStaffUsers(User $user): \Illuminate\Support\Collection
+    {
+        if ($user->isSuperuser()) {
+            return \App\Models\Division::query()
+                ->orderBy('name')
+                ->get()
+                ->flatMap(fn ($division) => $division->staffUsers())
+                ->unique('id')
+                ->sortBy('name')
+                ->values();
+        }
+
+        $division = $user->division();
+        if ($division && $user->isDivisionLeader($division)) {
+            return $division->staffUsers()->sortBy('name')->values();
+        }
+
+        if ($user->isHeadOfRole() && $user->role) {
+            return $user->role->assignableStaffUsers()->sortBy('name')->values();
+        }
+
+        return collect([$user])->filter()->values();
+    }
+
     /**
      * Preview Template Dokumen Kategori Layanan Secara Inline
      */
     public function previewCategoryTemplate(TicketCategory $category)
     {
-        if (!$category->template_path || !Storage::disk('public')->exists($category->template_path)) {
+        if (! Uploads::exists($category->template_path)) {
             abort(404, 'Template dokumen layanan tidak ditemukan.');
         }
 
-        $fullPath = Storage::disk('public')->path($category->template_path);
-        $mimeType = Storage::disk('public')->mimeType($category->template_path) ?? 'application/octet-stream';
-        $filename = $category->template_name ?? basename($category->template_path);
-
-        return response()->file($fullPath, [
-            'Content-Type' => $mimeType,
-            'Content-Disposition' => 'inline; filename="' . addslashes($filename) . '"',
-        ]);
+        return Uploads::inline(
+            $category->template_path,
+            $category->template_name ?? basename($category->template_path)
+        );
     }
 
     /**
@@ -1032,11 +1184,11 @@ class TicketController extends Controller
      */
     public function downloadCategoryTemplate(TicketCategory $category)
     {
-        if (!$category->template_path || !Storage::disk('public')->exists($category->template_path)) {
+        if (! Uploads::exists($category->template_path)) {
             abort(404, 'Template dokumen layanan tidak ditemukan.');
         }
 
-        return Storage::disk('public')->download(
+        return Uploads::download(
             $category->template_path,
             $category->template_name ?? basename($category->template_path)
         );
@@ -1047,43 +1199,35 @@ class TicketController extends Controller
      */
     public function previewAttachment(Ticket $ticket)
     {
-        if (!$ticket->attachment_path || !Storage::disk('public')->exists($ticket->attachment_path)) {
+        if (! Uploads::exists($ticket->attachment_path)) {
             abort(404, 'Dokumen lampiran tidak ditemukan.');
         }
 
-        $fullPath = Storage::disk('public')->path($ticket->attachment_path);
-        $mimeType = Storage::disk('public')->mimeType($ticket->attachment_path) ?? 'application/octet-stream';
-        $filename = $ticket->attachment_name ?? basename($ticket->attachment_path);
-
-        return response()->file($fullPath, [
-            'Content-Type' => $mimeType,
-            'Content-Disposition' => 'inline; filename="' . addslashes($filename) . '"',
-        ]);
+        return Uploads::inline(
+            $ticket->attachment_path,
+            $ticket->attachment_name ?? basename($ticket->attachment_path)
+        );
     }
 
     public function previewProof(Ticket $ticket)
     {
-        if (!$ticket->completion_proof_path || !Storage::disk('public')->exists($ticket->completion_proof_path)) {
+        if (! Uploads::exists($ticket->completion_proof_path)) {
             abort(404, 'Bukti pengerjaan tidak ditemukan.');
         }
 
-        $fullPath = Storage::disk('public')->path($ticket->completion_proof_path);
-        $mimeType = Storage::disk('public')->mimeType($ticket->completion_proof_path) ?? 'application/octet-stream';
-        $filename = $ticket->completion_proof_name ?? basename($ticket->completion_proof_path);
-
-        return response()->file($fullPath, [
-            'Content-Type' => $mimeType,
-            'Content-Disposition' => 'inline; filename="' . addslashes($filename) . '"',
-        ]);
+        return Uploads::inline(
+            $ticket->completion_proof_path,
+            $ticket->completion_proof_name ?? basename($ticket->completion_proof_path)
+        );
     }
 
     public function downloadProof(Ticket $ticket)
     {
-        if (!$ticket->completion_proof_path || !Storage::disk('public')->exists($ticket->completion_proof_path)) {
+        if (! Uploads::exists($ticket->completion_proof_path)) {
             abort(404, 'Bukti pengerjaan tidak ditemukan.');
         }
 
-        return Storage::disk('public')->download(
+        return Uploads::download(
             $ticket->completion_proof_path,
             $ticket->completion_proof_name ?? basename($ticket->completion_proof_path)
         );
@@ -1091,11 +1235,11 @@ class TicketController extends Controller
 
     public function downloadAttachment(Ticket $ticket)
     {
-        if (!$ticket->attachment_path || !Storage::disk('public')->exists($ticket->attachment_path)) {
+        if (! Uploads::exists($ticket->attachment_path)) {
             abort(404, 'Dokumen lampiran tidak ditemukan.');
         }
 
-        return Storage::disk('public')->download(
+        return Uploads::download(
             $ticket->attachment_path,
             $ticket->attachment_name ?? basename($ticket->attachment_path)
         );
@@ -1227,7 +1371,7 @@ class TicketController extends Controller
     {
         $user = Auth::user()->load('role');
         $points = (int) $request->validate([
-            'achievement_points' => ['required', 'integer', 'min:1', 'max:10'],
+            'achievement_points' => ['required', 'integer', 'min:0', 'max:100'],
         ])['achievement_points'];
 
         if (!$ticket->canSetAchievementPoints($user)) {
@@ -1275,6 +1419,8 @@ class TicketController extends Controller
         $roleStaff = collect();
         $canDirect = $ticket->canBeDirectedBy($user);
         $canSetAchievement = $ticket->canSetAchievementPoints($user);
+        $canDelete = $ticket->canBeDeletedBy($user);
+        $canSetDueDate = $ticket->canSetDueDate($user);
         if ($canDirect) {
             $division = $ticket->category?->division ?? $user->division();
             if ($division) {
@@ -1294,8 +1440,63 @@ class TicketController extends Controller
             'canHandle',
             'canDirect',
             'canSetAchievement',
+            'canDelete',
+            'canSetDueDate',
             'roleStaff'
         ));
+    }
+
+    public function destroy(Ticket $ticket)
+    {
+        $user = Auth::user()->load('role');
+        $ticket->load('category.division');
+
+        if (! $ticket->canBeDeletedBy($user)) {
+            return back()->with('error', 'Hanya Admin / pimpinan divisi yang dapat menghapus tiket.');
+        }
+
+        $number = $ticket->ticket_number;
+        TicketLog::create([
+            'ticket_id' => $ticket->id,
+            'user_id' => $user->id,
+            'from_role_id' => $user->role_id,
+            'to_role_id' => $ticket->current_role_id,
+            'action' => 'deleted',
+            'note' => "Tiket #{$number} dihapus (soft delete) oleh {$user->name}.",
+        ]);
+        $ticket->delete();
+
+        return redirect()->route('tickets.inbox')
+            ->with('success', "Tiket #{$number} berhasil dihapus.");
+    }
+
+    public function updateDueDate(Request $request, Ticket $ticket)
+    {
+        $user = Auth::user()->load('role');
+        $ticket->load(['category.division', 'currentRole']);
+
+        if (! $ticket->canSetDueDate($user)) {
+            return back()->with('error', 'Anda tidak dapat mengatur tanggal estimasi selesai tiket ini.');
+        }
+
+        $validated = $request->validate([
+            'due_date' => ['nullable', 'date'],
+        ]);
+
+        $ticket->update(['due_date' => $validated['due_date'] ?: null]);
+
+        TicketLog::create([
+            'ticket_id' => $ticket->id,
+            'user_id' => $user->id,
+            'from_role_id' => $user->role_id,
+            'to_role_id' => $ticket->current_role_id,
+            'action' => 'due_date_set',
+            'note' => $ticket->due_date
+                ? 'Tanggal estimasi selesai diatur ke '.$ticket->due_date->format('d M Y').'.'
+                : 'Tanggal estimasi selesai dikosongkan.',
+        ]);
+
+        return back()->with('success', 'Tanggal estimasi selesai diperbarui.');
     }
 
     public function handleAction(Request $request, Ticket $ticket)
@@ -1372,8 +1573,13 @@ class TicketController extends Controller
             }
             if ($ticket->canSetAchievementPoints($user) && $request->filled('achievement_points')) {
                 $updates['achievement_points'] = (int) $request->validate([
-                    'achievement_points' => ['required', 'integer', 'min:1', 'max:10'],
+                    'achievement_points' => ['required', 'integer', 'min:0', 'max:100'],
                 ])['achievement_points'];
+            }
+            if ($ticket->canSetDueDate($user) && $request->filled('due_date')) {
+                $updates['due_date'] = $request->validate([
+                    'due_date' => ['required', 'date'],
+                ])['due_date'];
             }
 
             $ticket->update($updates);
@@ -1821,11 +2027,11 @@ class TicketController extends Controller
 
         if ($request->hasFile('completion_proof')) {
             $file = $request->file('completion_proof');
-            if ($ticket->completion_proof_path && Storage::disk('public')->exists($ticket->completion_proof_path)) {
-                Storage::disk('public')->delete($ticket->completion_proof_path);
+            if ($ticket->completion_proof_path) {
+                Uploads::delete($ticket->completion_proof_path);
             }
             $ticket->forceFill([
-                'completion_proof_path' => $file->store('completion-proofs', 'public'),
+                'completion_proof_path' => Uploads::store($file, 'completion-proofs'),
                 'completion_proof_name' => $file->getClientOriginalName(),
             ])->save();
         }

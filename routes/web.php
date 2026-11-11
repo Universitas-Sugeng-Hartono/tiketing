@@ -8,6 +8,7 @@ use App\Http\Controllers\Admin\UserController;
 use App\Http\Controllers\AuthController;
 use App\Http\Controllers\DashboardController;
 use App\Http\Controllers\ProfileController;
+use App\Http\Controllers\PublicTicketController;
 use App\Http\Controllers\TicketController;
 use Illuminate\Support\Facades\Route;
 
@@ -15,6 +16,10 @@ Route::get('/login', [AuthController::class, 'showLogin'])->name('login');
 Route::post('/login', [AuthController::class, 'login'])->name('login.submit');
 Route::post('/quick-switch/{user}', [AuthController::class, 'quickSwitch'])->name('auth.quick-switch');
 Route::post('/logout', [AuthController::class, 'logout'])->name('logout');
+
+Route::get('/lacak', [PublicTicketController::class, 'form'])->name('tickets.track');
+Route::post('/lacak', [PublicTicketController::class, 'search'])->name('tickets.track.search');
+Route::get('/lacak/{ticketNumber}', [PublicTicketController::class, 'show'])->name('tickets.track.show');
 
 Route::middleware('auth')->group(function () {
     Route::get('/', [DashboardController::class, 'index'])->name('dashboard');
@@ -32,9 +37,11 @@ Route::middleware('auth')->group(function () {
     Route::get('/tickets/report', [TicketController::class, 'monthlyReport'])->name('tickets.report');
     Route::get('/tickets/report/export', [TicketController::class, 'exportMonthlyReport'])->name('tickets.report.export');
     Route::get('/tickets/workload', [TicketController::class, 'divisionWorkload'])->name('tickets.workload');
+    Route::get('/tickets/calendar', [TicketController::class, 'calendar'])->name('tickets.calendar');
     Route::get('/tickets/create', [TicketController::class, 'create'])->name('tickets.create');
     Route::post('/tickets', [TicketController::class, 'store'])->name('tickets.store');
     Route::get('/tickets/{ticket}', [TicketController::class, 'show'])->name('tickets.show');
+    Route::delete('/tickets/{ticket}', [TicketController::class, 'destroy'])->name('tickets.destroy');
     Route::get('/tickets/{ticket}/preview', [TicketController::class, 'previewAttachment'])->name('tickets.preview');
     Route::get('/tickets/{ticket}/attachment', [TicketController::class, 'downloadAttachment'])->name('tickets.attachment');
     Route::get('/tickets/{ticket}/proof', [TicketController::class, 'previewProof'])->name('tickets.proof');
@@ -46,6 +53,7 @@ Route::middleware('auth')->group(function () {
     Route::post('/tickets/{ticket}/problems/{problem}/toggle', [TicketController::class, 'toggleProblem'])->name('tickets.problems.toggle');
     Route::post('/tickets/{ticket}/progress', [TicketController::class, 'updateProgress'])->name('tickets.progress');
     Route::post('/tickets/{ticket}/achievement', [TicketController::class, 'updateAchievement'])->name('tickets.achievement');
+    Route::post('/tickets/{ticket}/due-date', [TicketController::class, 'updateDueDate'])->name('tickets.due-date');
     Route::post('/tickets/{ticket}/priority', [TicketController::class, 'updatePriority'])->name('tickets.priority');
     Route::post('/tickets/{ticket}/action', [TicketController::class, 'handleAction'])->name('tickets.action');
     Route::post('/tickets/{ticket}/reopen', [TicketController::class, 'reopen'])->name('tickets.reopen');

@@ -511,6 +511,17 @@
                     @endforeach
                 </select>
 
+                <div x-show="selectedCategory && chains[selectedCategory]?.is_other" x-cloak class="mt-2">
+                    <label class="block text-xs font-semibold text-slate-700 mb-1.5">Nama kategori Other</label>
+                    <input type="text" name="category_other" value="{{ old('category_other') }}" maxlength="120"
+                           placeholder="Contoh: Permintaan akun Zoom, akses CCTV, dll."
+                           :required="Boolean(chains[selectedCategory]?.is_other)"
+                           class="w-full px-3 py-2 rounded-lg border border-slate-200 text-xs focus:outline-none focus:border-slate-900">
+                    @error('category_other')
+                        <p class="mt-1 text-[11px] text-rose-600">{{ $message }}</p>
+                    @enderror
+                </div>
+
                 <div x-show="selectedCategory && chains[selectedCategory]" x-cloak
                      class="mt-2 px-3 py-2 rounded-lg bg-slate-50 border border-slate-200/70 text-[11px] text-slate-600 space-y-1">
                     <p>Alur: <strong class="text-slate-900" x-text="(chains[selectedCategory]?.chain_names || []).join(' → ')"></strong></p>
@@ -567,6 +578,15 @@
                     <option value="4" {{ (string) old('priority_rank') === '4' ? 'selected' : '' }}>4 · Bisa ditunda (cek AP, printer, dll.)</option>
                 </select>
                 <p class="mt-1 text-[11px] text-slate-400">Level 1 paling mendesak. Level 4 untuk pekerjaan yang masih bisa dijadwalkan.</p>
+            </div>
+
+            <div>
+                <label class="block text-xs font-semibold text-slate-700 mb-1.5">
+                    Estimasi selesai <span class="font-normal text-slate-400">(opsional)</span>
+                </label>
+                <input type="date" name="due_date" value="{{ old('due_date') }}"
+                       min="{{ now()->toDateString() }}"
+                       class="w-full px-3 py-2 rounded-lg border border-slate-200 text-xs focus:outline-none focus:border-slate-900">
             </div>
 
             <div>
