@@ -6,8 +6,8 @@ use App\Http\Controllers\Controller;
 use App\Models\Division;
 use App\Models\Role;
 use App\Models\TicketCategory;
+use App\Support\Uploads;
 use Illuminate\Http\Request;
-use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
 
 class CategoryController extends Controller
@@ -69,7 +69,7 @@ class CategoryController extends Controller
         if ($request->hasFile('template_file')) {
             $file = $request->file('template_file');
             $templateName = $file->getClientOriginalName();
-            $templatePath = $file->store('category-templates', 'public');
+            $templatePath = Uploads::store($file, 'category-templates');
         }
 
         $slug = Str::slug($validated['name']);
@@ -132,20 +132,16 @@ class CategoryController extends Controller
         $templateName = $category->template_name;
 
         if ($request->boolean('remove_template') && $templatePath) {
-            if (Storage::disk('public')->exists($templatePath)) {
-                Storage::disk('public')->delete($templatePath);
-            }
+            Uploads::delete($templatePath);
             $templatePath = null;
             $templateName = null;
         }
 
         if ($request->hasFile('template_file')) {
-            if ($templatePath && Storage::disk('public')->exists($templatePath)) {
-                Storage::disk('public')->delete($templatePath);
-            }
+            Uploads::delete($templatePath);
             $file = $request->file('template_file');
             $templateName = $file->getClientOriginalName();
-            $templatePath = $file->store('category-templates', 'public');
+            $templatePath = Uploads::store($file, 'category-templates');
         }
 
         $category->update([
@@ -172,9 +168,7 @@ class CategoryController extends Controller
             return back()->with('error', 'Kategori layanan ini memiliki tiket aktif dan tidak dapat dihapus.');
         }
 
-        if ($category->template_path && Storage::disk('public')->exists($category->template_path)) {
-            Storage::disk('public')->delete($category->template_path);
-        }
+        Uploads::delete($category->template_path);
 
         $name = $category->name;
         $category->delete();

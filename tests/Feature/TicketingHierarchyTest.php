@@ -1231,7 +1231,7 @@ class TicketingHierarchyTest extends TestCase
         $this->assertSame('Fajar Nugroho Senior, S.T.', $user->name);
         $this->assertSame('081234567899', $user->phone);
         $this->assertNotNull($user->avatar_path);
-        Storage::disk('public')->assertExists($user->avatar_path);
+        Storage::disk(config('filesystems.upload_disk', 'public'))->assertExists($user->avatar_path);
 
         // 3. Akses dashboard, pastikan foto profil tampil di pojok kiri atas dan pojok kanan atas
         $dashboardResponse = $this->actingAs($user)->get(route('dashboard'));
@@ -1358,7 +1358,7 @@ class TicketingHierarchyTest extends TestCase
         $this->assertSame($staff->id, (int) $ticket->assigned_user_id);
 
         $this->actingAs($head)->post(route('tickets.achievement', $ticket), [
-            'achievement_points' => 11,
+            'achievement_points' => 101,
         ])->assertSessionHasErrors('achievement_points');
 
         $this->actingAs($staff)->get(route('tickets.show', $ticket))

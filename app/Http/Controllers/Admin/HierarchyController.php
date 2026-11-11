@@ -123,7 +123,7 @@ class HierarchyController extends Controller
         Role::recalculateLevels();
 
         // Berikan akses menu standar secara otomatis ke role baru (Beranda, Tiket Saya, Riwayat Tiket, + Inbox sesuai kapabilitas)
-        $defaultSlugs = ['dashboard', 'tickets-my', 'tickets-history', 'tickets-workload', 'tickets-report'];
+        $defaultSlugs = ['dashboard', 'tickets-my', 'tickets-history', 'tickets-workload', 'tickets-report', 'tickets-calendar'];
         if ($role->can_receive_ticket) {
             $defaultSlugs[] = 'tickets-inbox';
         }

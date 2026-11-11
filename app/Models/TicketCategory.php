@@ -57,6 +57,11 @@ class TicketCategory extends Model
         return !empty($this->template_path);
     }
 
+    public function isOther(): bool
+    {
+        return $this->slug === 'other';
+    }
+
     /**
      * Ambil seluruh objek Role sesuai urutan di workflow_roles (jika dikonfigurasi)
      */

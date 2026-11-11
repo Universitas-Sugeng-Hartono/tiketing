@@ -117,7 +117,7 @@
                             <a href="{{ route('tickets.show', $ticket) }}" class="font-semibold text-slate-900 hover:text-indigo-600 block">
                                 {{ $ticket->title }}
                             </a>
-                            <span class="text-[11px] text-slate-500 block mt-0.5">{{ $ticket->category?->name }}</span>
+                            <span class="text-[11px] text-slate-500 block mt-0.5">{{ $ticket->categoryDisplayName() }}</span>
                         </td>
 
                         <!-- 3. Proses (Tahap Hirarki Saat Ini) -->
