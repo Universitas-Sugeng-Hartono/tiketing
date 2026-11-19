@@ -190,6 +190,9 @@ class Ticket extends Model
         return $this->public_token;
     }
 
+    /** Potongan poin achievement per hari keterlambatan dari due date. */
+    public const ACHIEVEMENT_LATE_PENALTY_PER_DAY = 10;
+
     public function progressPercent(): ?int
     {
         if ($this->progress_percent === null) {
@@ -197,6 +200,61 @@ class Ticket extends Model
         }
 
         return max(0, min(100, (int) $this->progress_percent));
+    }
+
+    public function isFinishedForAchievement(): bool
+    {
+        return $this->work_status === 'finished' || $this->finished_at !== null;
+    }
+
+    /**
+     * Jumlah hari selesai setelah due date (0 jika on-time / belum due / belum selesai).
+     */
+    public function daysLateOnCompletion(): int
+    {
+        if (! $this->due_date || ! $this->isFinishedForAchievement()) {
+            return 0;
+        }
+
+        $completed = ($this->finished_at ?? $this->resolved_at)?->copy()->startOfDay();
+        if (! $completed) {
+            return 0;
+        }
+
+        $due = $this->due_date->copy()->startOfDay();
+        if ($completed->lte($due)) {
+            return 0;
+        }
+
+        return (int) $due->diffInDays($completed);
+    }
+
+    /**
+     * Poin yang masuk ranking: target dikurangi 10/hari jika lewat due date (min 0).
+     */
+    public function earnedAchievementPoints(): int
+    {
+        $base = (int) ($this->achievement_points ?? 0);
+        if ($base <= 0 || ! $this->isFinishedForAchievement()) {
+            return 0;
+        }
+
+        $daysLate = $this->daysLateOnCompletion();
+        if ($daysLate <= 0) {
+            return $base;
+        }
+
+        return max(0, $base - ($daysLate * self::ACHIEVEMENT_LATE_PENALTY_PER_DAY));
+    }
+
+    public function achievementLatePenalty(): int
+    {
+        $base = (int) ($this->achievement_points ?? 0);
+        if ($base <= 0) {
+            return 0;
+        }
+
+        return max(0, $base - $this->earnedAchievementPoints());
     }
 
     /**

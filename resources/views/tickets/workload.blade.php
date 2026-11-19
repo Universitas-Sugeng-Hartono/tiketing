@@ -247,7 +247,10 @@
                             {{ $ticket->ticket_number }}
                             · {{ $ticket->assignedUser?->name ?? 'Belum ada petugas' }}
                             @if($ticket->achievement_points && (($canSeeFullRanking ?? false) || (int) $ticket->assigned_user_id === (int) $user->id))
-                                · {{ $ticket->achievement_points }} poin
+                                · {{ $ticket->isFinishedForAchievement() ? $ticket->earnedAchievementPoints() : $ticket->achievement_points }} poin
+                                @if($ticket->isFinishedForAchievement() && $ticket->achievementLatePenalty() > 0)
+                                    <span class="text-rose-600">(telat)</span>
+                                @endif
                             @endif
                             @if($ticket->category)
                                 · {{ $ticket->category->name }}
