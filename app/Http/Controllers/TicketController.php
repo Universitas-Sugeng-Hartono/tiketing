@@ -795,7 +795,8 @@ class TicketController extends Controller
             ->where(function ($query) {
                 $query->where('work_status', 'finished')->orWhereNotNull('finished_at');
             })
-            ->sum('achievement_points');
+            ->get(['achievement_points', 'due_date', 'finished_at', 'resolved_at', 'work_status'])
+            ->sum(fn (Ticket $ticket) => $ticket->earnedAchievementPoints());
 
         return view('tickets.inbox', compact(
             'tickets',
@@ -1386,12 +1387,12 @@ class TicketController extends Controller
             'from_role_id' => $user->role_id,
             'to_role_id' => $ticket->current_role_id,
             'action' => 'achievement_set',
-            'note' => "Kepala mengatur poin achievement tiket ini menjadi {$points}. Staff yang menyelesaikan tiket menerima poin tersebut.",
+            'note' => "Kepala mengatur poin achievement tiket ini menjadi {$points}. Staff yang menyelesaikan tiket menerima poin tersebut (dikurangi ".Ticket::ACHIEVEMENT_LATE_PENALTY_PER_DAY.' poin/hari jika lewat due date).',
         ]);
 
         $assignee = $ticket->assignedUser?->name ?? 'staff yang ditugaskan';
 
-        return back()->with('success', "Poin achievement diatur menjadi {$points}. {$assignee} menerima poin ini setelah tiket selesai.");
+        return back()->with('success', "Poin achievement diatur menjadi {$points}. {$assignee} menerima poin ini setelah tiket selesai (telat = −".Ticket::ACHIEVEMENT_LATE_PENALTY_PER_DAY.' poin/hari).');
     }
 
     public function show(Ticket $ticket)
@@ -1792,7 +1793,10 @@ class TicketController extends Controller
     public function addComment(Request $request, Ticket $ticket)
     {
         $validated = $request->validate([
-            'note' => ['required', 'string', 'min:2'],
+            'note' => ['required', 'string', 'min:2', 'max:2000'],
+        ], [
+            'note.required' => 'Tulis balasan terlebih dahulu.',
+            'note.min' => 'Balasan minimal 2 karakter.',
         ]);
 
         $user = Auth::user();
@@ -1806,7 +1810,10 @@ class TicketController extends Controller
             'note' => $validated['note'],
         ]);
 
-        return back()->with('success', 'Balasan berhasil dikirim.');
+        return redirect()
+            ->route('tickets.show', $ticket)
+            ->with('success', 'Balasan berhasil dikirim.')
+            ->withFragment('diskusi');
     }
 
     public function storeProblems(Request $request, Ticket $ticket)
@@ -2112,9 +2119,9 @@ class TicketController extends Controller
             ->where(function ($query) {
                 $query->where('work_status', 'finished')->orWhereNotNull('finished_at');
             })
+            ->get(['assigned_user_id', 'achievement_points', 'due_date', 'finished_at', 'resolved_at', 'work_status'])
             ->groupBy('assigned_user_id')
-            ->selectRaw('assigned_user_id, SUM(achievement_points) as total')
-            ->pluck('total', 'assigned_user_id');
+            ->map(fn ($tickets) => (int) $tickets->sum(fn (Ticket $ticket) => $ticket->earnedAchievementPoints()));
     }
 
     private function staffProgressForRole(Role $role, User $head)

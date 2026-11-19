@@ -228,15 +228,24 @@
                     <div>
                         <span class="text-[10px] uppercase font-bold tracking-wider text-amber-700 block">Poin Achievement</span>
                         <p class="text-xs font-bold text-slate-900 mt-1">
-                            {{ $ticket->achievement_points === null ? 'Belum diatur' : $ticket->achievement_points.' poin' }}
+                            @if($ticket->achievement_points === null)
+                                Belum diatur
+                            @elseif($ticket->isFinishedForAchievement() && $ticket->achievementLatePenalty() > 0)
+                                {{ $ticket->earnedAchievementPoints() }} poin
+                                <span class="font-semibold text-slate-500">(dari {{ $ticket->achievement_points }})</span>
+                            @else
+                                {{ $ticket->achievement_points }} poin
+                            @endif
                         </p>
                         <span class="text-[11px] text-slate-500 block mt-0.5">
                             @if($ticket->achievement_points === null)
                                 Kepala IT yang menentukan poin tiket ini.
-                            @elseif($ticket->work_status === 'finished' || $ticket->finished_at)
+                            @elseif($ticket->isFinishedForAchievement() && $ticket->daysLateOnCompletion() > 0)
+                                Telat {{ $ticket->daysLateOnCompletion() }} hari (−{{ \App\Models\Ticket::ACHIEVEMENT_LATE_PENALTY_PER_DAY }}/hari). Diterima {{ $ticket->assignedUser?->name ?? 'staff' }}.
+                            @elseif($ticket->isFinishedForAchievement())
                                 Diterima {{ $ticket->assignedUser?->name ?? 'staff' }}.
                             @else
-                                Diterima staff setelah tiket selesai.
+                                Diterima staff setelah selesai. Lewat due date: −{{ \App\Models\Ticket::ACHIEVEMENT_LATE_PENALTY_PER_DAY }} poin/hari.
                             @endif
                         </span>
                     </div>
@@ -550,7 +559,7 @@
             @endif
 
             <!-- KARTU RIWAYAT & DISKUSI -->
-            <div class="bg-white rounded-2xl border border-slate-200/90 shadow-xs overflow-hidden">
+            <div id="diskusi" class="bg-white rounded-2xl border border-slate-200/90 shadow-xs overflow-hidden scroll-mt-20">
                 <div class="p-6 border-b border-slate-100 flex items-center justify-between">
                     <div>
                         <h2 class="text-sm font-bold text-slate-900">Riwayat &amp; Catatan Diskusi</h2>
@@ -561,11 +570,15 @@
                     </span>
                 </div>
 
-                <!-- Timeline Feed -->
-                <div class="divide-y divide-slate-100 max-h-[500px] overflow-y-auto">
+                <!-- Timeline Feed: auto-scroll ke balasan terbaru -->
+                <div id="diskusi-feed"
+                     x-data
+                     x-init="$nextTick(() => { $el.scrollTop = $el.scrollHeight })"
+                     class="divide-y divide-slate-100 max-h-[500px] overflow-y-auto">
                     @forelse($ticket->logs as $log)
                         @php $badge = $log->actionBadge(); @endphp
-                        <div class="p-5 text-xs hover:bg-slate-50/50 transition">
+                        <div class="p-5 text-xs hover:bg-slate-50/50 transition {{ $loop->last ? 'bg-amber-50/40' : '' }}"
+                             @if($loop->last) id="diskusi-terbaru" @endif>
                             <div class="flex items-center justify-between gap-3 mb-1.5">
                                 <div class="flex items-center gap-2 flex-wrap">
                                     <div class="w-6 h-6 rounded-full bg-slate-100 text-slate-700 font-bold flex items-center justify-center text-[10px]">
@@ -592,12 +605,20 @@
                 </div>
 
                 <!-- Quick Comment Form -->
-                <form action="{{ route('tickets.comment', $ticket) }}" method="POST" class="p-4 bg-slate-50 border-t border-slate-100 flex gap-2">
+                <form action="{{ route('tickets.comment', $ticket) }}" method="POST"
+                      x-data="{ submitting: false }"
+                      @submit="if (submitting) { $event.preventDefault(); return false } submitting = true"
+                      class="p-4 bg-slate-50 border-t border-slate-100 flex gap-2">
                     @csrf
-                    <input type="text" name="note" required placeholder="Tulis balasan atau catatan baru..."
-                           class="flex-1 px-3.5 py-2.5 rounded-xl bg-white border border-slate-200 text-xs focus:outline-none focus:border-slate-900 shadow-xs">
-                    <button type="submit" class="px-4 py-2.5 rounded-xl bg-slate-900 hover:bg-slate-800 text-white text-xs font-semibold shrink-0 shadow-xs transition">
-                        Kirim Balasan
+                    <input type="text" name="note" required minlength="2" maxlength="2000"
+                           placeholder="Tulis balasan atau catatan baru..."
+                           class="flex-1 px-3.5 py-2.5 rounded-xl bg-white border border-slate-200 text-xs focus:outline-none focus:border-slate-900 shadow-xs"
+                           @keydown.enter="if ($el.value.trim().length < 2) $event.preventDefault()">
+                    <button type="submit"
+                            :disabled="submitting"
+                            class="px-4 py-2.5 rounded-xl bg-slate-900 hover:bg-slate-800 text-white text-xs font-semibold shrink-0 shadow-xs transition disabled:opacity-60 disabled:cursor-wait inline-flex items-center gap-1.5">
+                        <span x-show="!submitting">Kirim Balasan</span>
+                        <span x-show="submitting" x-cloak>Mengirim...</span>
                     </button>
                 </form>
             </div>
