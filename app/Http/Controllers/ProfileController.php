@@ -2,10 +2,10 @@
 
 namespace App\Http\Controllers;
 
+use App\Support\Uploads;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Hash;
-use Illuminate\Support\Facades\Storage;
 use Illuminate\Validation\Rule;
 
 class ProfileController extends Controller
@@ -56,19 +56,14 @@ class ProfileController extends Controller
 
         // Opsi hapus foto jika checkbox remove_avatar dicentang
         if ($request->boolean('remove_avatar')) {
-            if ($user->avatar_path && Storage::disk('public')->exists($user->avatar_path)) {
-                Storage::disk('public')->delete($user->avatar_path);
-            }
+            Uploads::delete($user->avatar_path);
             $user->avatar_path = null;
         }
 
         // Upload foto baru
         if ($request->hasFile('avatar')) {
-            if ($user->avatar_path && Storage::disk('public')->exists($user->avatar_path)) {
-                Storage::disk('public')->delete($user->avatar_path);
-            }
-            $path = $request->file('avatar')->store('avatars', 'public');
-            $user->avatar_path = $path;
+            Uploads::delete($user->avatar_path);
+            $user->avatar_path = Uploads::store($request->file('avatar'), 'avatars');
         }
 
         // Update password jika diisi
@@ -86,16 +81,10 @@ class ProfileController extends Controller
      */
     public function avatar(\App\Models\User $user)
     {
-        if ($user->avatar_path && Storage::disk('public')->exists($user->avatar_path)) {
-            $path = Storage::disk('public')->path($user->avatar_path);
-            $mime = Storage::disk('public')->mimeType($user->avatar_path) ?: 'image/jpeg';
-
-            return response()->file($path, [
-                'Content-Type' => $mime,
-                'Cache-Control' => 'public, max-age=86400',
-            ]);
+        if (! Uploads::exists($user->avatar_path)) {
+            abort(404);
         }
 
-        abort(404);
+        return Uploads::inline($user->avatar_path, basename($user->avatar_path));
     }
 }

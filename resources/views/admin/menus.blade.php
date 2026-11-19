@@ -22,6 +22,7 @@
         'tickets.my' => 'Tiket Saya (tickets.my)',
         'tickets.history' => 'Riwayat Tiket (tickets.history)',
         'tickets.inbox' => 'Tiket Masuk Role (tickets.inbox)',
+        'tickets.calendar' => 'Kalender Tiket (tickets.calendar)',
         'tickets.report' => 'Laporan Bulanan (tickets.report)',
         'tickets.workload' => 'Pekerjaan Divisi (tickets.workload)',
         'admin.categories' => 'Kategori Layanan (admin.categories)',

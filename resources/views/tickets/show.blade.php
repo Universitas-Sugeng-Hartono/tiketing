@@ -89,10 +89,28 @@
                     <span class="text-xs text-slate-500">Request date {{ $ticket->created_at->format('d M Y, H:i') }}</span>
                     <span class="text-slate-300 hidden sm:inline">•</span>
                     <span class="text-xs text-slate-500">Delivered date {{ $ticket->delivered_at ? $ticket->delivered_at->format('d M Y, H:i') : 'Belum diarahkan' }}</span>
+                    @if($ticket->due_date)
+                        <span class="text-slate-300 hidden sm:inline">•</span>
+                        <span class="text-xs {{ $ticket->due_date->isPast() && ! in_array($ticket->status, ['resolved', 'rejected', 'closed'], true) ? 'text-rose-600 font-semibold' : 'text-slate-500' }}">
+                            Due date {{ $ticket->due_date->format('d M Y') }}
+                        </span>
+                    @endif
                 </div>
 
                 <!-- Action Button (Pop-up Trigger) -->
                 <div class="flex items-center gap-2">
+                    @if($canDelete ?? false)
+                        <form action="{{ route('tickets.destroy', $ticket) }}" method="POST"
+                              onsubmit="return confirm('Hapus tiket #{{ $ticket->ticket_number }}? Tiket bisa dikembalikan oleh admin database jika perlu.');">
+                            @csrf
+                            @method('DELETE')
+                            <button type="submit"
+                                    class="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-rose-50 hover:bg-rose-100 border border-rose-200 text-rose-700 text-xs font-semibold transition">
+                                Hapus Tiket
+                            </button>
+                        </form>
+                    @endif
+
                     @if($ticket->canBeRevisedBy($user))
                         <button type="button" @click="revisiModal = true"
                                 class="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-amber-50 hover:bg-amber-100 border border-amber-300 text-amber-800 text-xs font-semibold transition">
@@ -156,59 +174,83 @@
                 @endif
             @endif
 
-            <!-- Grid 4 Kolom Informasi Penting -->
-            <div class="mt-6 pt-5 border-t border-slate-100 grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-4">
-                <div class="p-3 rounded-xl bg-slate-50/70 border border-slate-100">
-                    <span class="text-[10px] uppercase font-bold tracking-wider text-slate-400 block mb-0.5">Pemohon</span>
-                    <p class="text-xs font-bold text-slate-900 truncate">{{ $ticket->creator?->name ?? '-' }}</p>
-                    <span class="text-[11px] text-slate-500">{{ $ticket->creatorRole?->name ?? '-' }}</span>
+            <!-- Kartu meta tiket -->
+            <div class="mt-6 pt-5 border-t border-slate-100 grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-3">
+                <div class="min-w-0 p-3.5 rounded-xl bg-slate-50/70 border border-slate-100 flex flex-col gap-1">
+                    <span class="text-[10px] uppercase font-bold tracking-wider text-slate-400">Pemohon</span>
+                    <p class="text-xs font-bold text-slate-900 truncate" title="{{ $ticket->creator?->name }}">{{ $ticket->creator?->name ?? '-' }}</p>
+                    <span class="text-[11px] text-slate-500 truncate">{{ $ticket->creatorRole?->name ?? '-' }}</span>
                 </div>
 
-                <div class="p-3 rounded-xl bg-slate-50/70 border border-slate-100">
-                    <span class="text-[10px] uppercase font-bold tracking-wider text-slate-400 block mb-0.5">Kategori</span>
-                    <p class="text-xs font-bold text-slate-900 truncate">{{ $ticket->category?->name ?? '-' }}</p>
+                <div class="min-w-0 p-3.5 rounded-xl bg-slate-50/70 border border-slate-100 flex flex-col gap-1">
+                    <span class="text-[10px] uppercase font-bold tracking-wider text-slate-400">Kategori</span>
+                    <p class="text-xs font-bold text-slate-900 truncate" title="{{ $ticket->categoryDisplayName() }}">{{ $ticket->categoryDisplayName() }}</p>
                     <span class="text-[11px] text-slate-500">Layanan SuperApp</span>
                 </div>
 
-                <div class="p-3 rounded-xl bg-slate-50/70 border border-slate-100">
-                    <span class="text-[10px] uppercase font-bold tracking-wider text-slate-400 block mb-0.5">Posisi Hirarki</span>
+                <div class="min-w-0 p-3.5 rounded-xl bg-slate-50/70 border border-slate-100 flex flex-col gap-1">
+                    <span class="text-[10px] uppercase font-bold tracking-wider text-slate-400">Posisi Hirarki</span>
                     <p class="text-xs font-bold text-indigo-700 truncate">Role {{ $ticket->currentRole?->name ?? '-' }}</p>
                     <span class="text-[11px] text-slate-500">Penanggung Jawab</span>
                 </div>
 
-                <div class="p-3 rounded-xl bg-amber-50/70 border border-amber-100">
-                    <span class="text-[10px] uppercase font-bold tracking-wider text-amber-700 block mb-0.5">Poin Achievement</span>
-                    <p class="text-xs font-bold text-slate-900">
-                        {{ $ticket->achievement_points === null ? 'Belum diatur' : $ticket->achievement_points.' poin' }}
+                <div class="min-w-0 p-3.5 rounded-xl bg-slate-50/70 border border-slate-100 flex flex-col gap-1">
+                    <span class="text-[10px] uppercase font-bold tracking-wider text-slate-400">Petugas Pelaksana</span>
+                    <p class="text-xs font-bold text-slate-900 truncate" title="{{ $ticket->assignedUser?->name }}">
+                        {{ $ticket->assignedUser?->name ?? 'Belum Diarahkan' }}
                     </p>
-                    <span class="text-[11px] text-slate-500 block">
-                        @if($ticket->achievement_points === null)
-                            Kepala IT yang menentukan poin tiket ini.
-                        @elseif($ticket->work_status === 'finished' || $ticket->finished_at)
-                            Diterima {{ $ticket->assignedUser?->name ?? 'staff' }}.
-                        @else
-                            Diterima staff setelah tiket selesai.
-                        @endif
+                    <span class="text-[11px] text-slate-500 truncate">
+                        {{ $ticket->assignedUser?->keahlian ? $ticket->assignedUser->keahlian : ($ticket->assignedUser ? 'Staff Pelaksana' : 'Menunggu Supervisor') }}
                     </span>
-                    @if($canSetAchievement ?? false)
-                        <form action="{{ route('tickets.achievement', $ticket) }}" method="POST" class="mt-2 flex items-center gap-1.5">
+                </div>
+
+                <div class="min-w-0 p-3.5 rounded-xl bg-slate-50/70 border border-slate-100 flex flex-col gap-2">
+                    <div>
+                        <span class="text-[10px] uppercase font-bold tracking-wider text-slate-400 block">Estimasi Selesai</span>
+                        <p class="text-xs font-bold text-slate-900 mt-1">
+                            {{ $ticket->due_date ? $ticket->due_date->format('d M Y') : 'Belum diatur' }}
+                        </p>
+                    </div>
+                    @if($canSetDueDate ?? false)
+                        <form action="{{ route('tickets.due-date', $ticket) }}" method="POST" class="flex items-center gap-2">
                             @csrf
-                            <input type="number" name="achievement_points" min="1" max="10" required
-                                   value="{{ old('achievement_points', $ticket->achievement_points) }}"
-                                   class="w-16 px-2 py-1 rounded-lg border border-amber-200 bg-white text-xs font-semibold">
-                            <button type="submit" class="px-2 py-1 rounded-lg bg-slate-900 text-white text-[10px] font-semibold">Atur</button>
+                            <input type="date" name="due_date"
+                                   value="{{ old('due_date', optional($ticket->due_date)->format('Y-m-d')) }}"
+                                   class="min-w-0 flex-1 px-2.5 py-1.5 rounded-lg border border-slate-200 bg-white text-xs">
+                            <button type="submit" class="shrink-0 px-3 py-1.5 rounded-lg bg-slate-900 text-white text-[11px] font-semibold">
+                                Atur
+                            </button>
                         </form>
                     @endif
                 </div>
 
-                <div class="p-3 rounded-xl bg-slate-50/70 border border-slate-100">
-                    <span class="text-[10px] uppercase font-bold tracking-wider text-slate-400 block mb-0.5">Petugas Pelaksana</span>
-                    <p class="text-xs font-bold text-slate-900 truncate">
-                        {{ $ticket->assignedUser?->name ?? 'Belum Diarahkan' }}
-                    </p>
-                    <span class="text-[11px] text-slate-500 truncate block">
-                        {{ $ticket->assignedUser?->keahlian ? $ticket->assignedUser->keahlian : ($ticket->assignedUser ? 'Staff Pelaksana' : 'Menunggu Supervisor') }}
-                    </span>
+                <div class="min-w-0 p-3.5 rounded-xl bg-amber-50/70 border border-amber-100 flex flex-col gap-2">
+                    <div>
+                        <span class="text-[10px] uppercase font-bold tracking-wider text-amber-700 block">Poin Achievement</span>
+                        <p class="text-xs font-bold text-slate-900 mt-1">
+                            {{ $ticket->achievement_points === null ? 'Belum diatur' : $ticket->achievement_points.' poin' }}
+                        </p>
+                        <span class="text-[11px] text-slate-500 block mt-0.5">
+                            @if($ticket->achievement_points === null)
+                                Kepala IT yang menentukan poin tiket ini.
+                            @elseif($ticket->work_status === 'finished' || $ticket->finished_at)
+                                Diterima {{ $ticket->assignedUser?->name ?? 'staff' }}.
+                            @else
+                                Diterima staff setelah tiket selesai.
+                            @endif
+                        </span>
+                    </div>
+                    @if($canSetAchievement ?? false)
+                        <form action="{{ route('tickets.achievement', $ticket) }}" method="POST" class="flex items-center gap-2">
+                            @csrf
+                            <input type="number" name="achievement_points" min="0" max="100" required
+                                   value="{{ old('achievement_points', $ticket->achievement_points) }}"
+                                   class="w-20 px-2.5 py-1.5 rounded-lg border border-amber-200 bg-white text-xs font-semibold">
+                            <button type="submit" class="shrink-0 px-3 py-1.5 rounded-lg bg-slate-900 text-white text-[11px] font-semibold">
+                                Atur
+                            </button>
+                        </form>
+                    @endif
                 </div>
             </div>
         </div>
@@ -748,11 +790,11 @@
                             @if($canSetAchievement ?? false)
                             <div>
                                 <label class="block text-xs font-bold text-slate-800 mb-1">Poin achievement tiket</label>
-                                <input type="number" name="achievement_points" min="1" max="10"
+                                <input type="number" name="achievement_points" min="0" max="100"
                                        value="{{ old('achievement_points', $ticket->achievement_points) }}"
-                                       placeholder="1–10"
+                                       placeholder="0–100"
                                        class="w-28 px-3 py-2 rounded-lg border border-slate-200 text-xs bg-white focus:outline-none focus:border-slate-900">
-                                <p class="text-[11px] text-slate-400 mt-1">Isi 1 sampai 10. Staff yang mengerjakan menerima poin ini setelah tiket selesai.</p>
+                                <p class="text-[11px] text-slate-400 mt-1">Isi 0 sampai 100. Staff yang mengerjakan menerima poin ini setelah tiket selesai.</p>
                             </div>
                             @endif
 

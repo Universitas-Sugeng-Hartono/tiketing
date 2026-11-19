@@ -194,7 +194,7 @@
                                     </td>
                                     <td class="py-3 px-4 max-w-[200px]">
                                         <p class="font-semibold text-slate-900 truncate" title="{{ $t->title }}">{{ $t->title }}</p>
-                                        <p class="text-[11px] text-slate-400 truncate">{{ $t->category?->name ?? 'Layanan Umum' }}</p>
+                                        <p class="text-[11px] text-slate-400 truncate">{{ $t->categoryDisplayName() }}</p>
                                     </td>
                                     <td class="py-3 px-4 whitespace-nowrap">
                                         <span class="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-[10px] font-semibold border {{ $pBadge['bg'] }} {{ $pBadge['text'] }} {{ $pBadge['border'] }}">
@@ -499,7 +499,7 @@
                                     </td>
                                     <td class="py-3 px-4">
                                         <span class="font-semibold text-slate-900 block">{{ $t->title }}</span>
-                                        <span class="text-[11px] text-slate-400">{{ $t->category?->name }}</span>
+                                        <span class="text-[11px] text-slate-400">{{ $t->categoryDisplayName() }}</span>
                                     </td>
                                     <td class="py-3 px-4 whitespace-nowrap">
                                         <span class="text-[11px] text-slate-600">Tahap {{ $t->approval_step }} ({{ $t->currentRole?->name }})</span>
@@ -575,7 +575,7 @@
                                     <a href="{{ route('tickets.show', $mt) }}" class="font-semibold text-slate-900 hover:text-indigo-600 block truncate max-w-xs">
                                         {{ $mt->title }}
                                     </a>
-                                    <span class="text-[11px] text-slate-400">{{ $mt->category?->name }}</span>
+                                    <span class="text-[11px] text-slate-400">{{ $mt->categoryDisplayName() }}</span>
                                 </td>
                                 <td class="py-3 px-4 whitespace-nowrap">
                                     <span class="text-[11px] text-slate-600">

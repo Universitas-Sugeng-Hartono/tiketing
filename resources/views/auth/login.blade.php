@@ -171,6 +171,13 @@
                         </button>
                     </form>
 
+                    <div class="mt-4 text-center">
+                        <a href="{{ route('tickets.track') }}"
+                           class="inline-flex items-center gap-1.5 text-xs font-semibold text-slate-600 hover:text-indigo-700 transition">
+                            Lacak tiket tanpa login →
+                        </a>
+                    </div>
+
                     <!-- Akses Pengujian Cepat (Role) -->
                     @if(isset($demoUsers) && $demoUsers->count() > 0)
                         <div class="mt-5 pt-4 border-t border-slate-100 text-center">

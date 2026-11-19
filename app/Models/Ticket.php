@@ -6,10 +6,13 @@ use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Database\Eloquent\SoftDeletes;
 use Illuminate\Support\Collection;
 
 class Ticket extends Model
 {
+    use SoftDeletes;
+
     /**
      * Tiket yang perlu tindakan user: pimpinan divisi (antrian disposisi),
      * kepala role, atau staff yang sudah ditugaskan.
@@ -66,6 +69,7 @@ class Ticket extends Model
 
     protected $fillable = [
         'ticket_number',
+        'public_token',
         'title',
         'description',
         'attachment_path',
@@ -73,6 +77,7 @@ class Ticket extends Model
         'completion_proof_path',
         'completion_proof_name',
         'category_id',
+        'category_other',
         'priority',
         'priority_rank',
         'assessed_priority_rank',
@@ -87,6 +92,7 @@ class Ticket extends Model
         'work_status',
         'delivered_at',
         'finished_at',
+        'due_date',
         'achievement_points',
         'approval_step',
         'resolved_at',
@@ -96,6 +102,7 @@ class Ticket extends Model
         'resolved_at' => 'datetime',
         'delivered_at' => 'datetime',
         'finished_at' => 'datetime',
+        'due_date' => 'date',
         'priority_rank' => 'integer',
         'assessed_priority_rank' => 'integer',
         'progress_percent' => 'integer',
@@ -156,6 +163,31 @@ class Ticket extends Model
         }
 
         return sprintf('%s%04d', $prefix, $next);
+    }
+
+    public static function generatePublicToken(): string
+    {
+        $alphabet = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+
+        do {
+            $token = '';
+            for ($i = 0; $i < 8; $i++) {
+                $token .= $alphabet[random_int(0, strlen($alphabet) - 1)];
+            }
+        } while (static::withTrashed()->where('public_token', $token)->exists());
+
+        return $token;
+    }
+
+    public function ensurePublicToken(): string
+    {
+        if (filled($this->public_token)) {
+            return $this->public_token;
+        }
+
+        $this->forceFill(['public_token' => static::generatePublicToken()])->save();
+
+        return $this->public_token;
     }
 
     public function progressPercent(): ?int
@@ -333,6 +365,43 @@ class Ticket extends Model
         $headId = $this->currentRole?->head_user_id;
 
         return $headId && (int) $user->id === (int) $headId;
+    }
+
+    public function canBeDeletedBy(User $user): bool
+    {
+        if ($user->isSuperuser()) {
+            return true;
+        }
+
+        $division = $this->category?->division;
+
+        return $division && $user->isDivisionLeader($division);
+    }
+
+    public function canSetDueDate(User $user): bool
+    {
+        if (in_array($this->status, ['resolved', 'rejected', 'closed'], true)) {
+            return false;
+        }
+
+        if ($user->isSuperuser()) {
+            return true;
+        }
+
+        if ((int) $this->creator_id === (int) $user->id && $this->status === 'open') {
+            return true;
+        }
+
+        return $this->canBeDirectedBy($user) || $this->canSetAchievementPoints($user);
+    }
+
+    public function categoryDisplayName(): string
+    {
+        if ($this->category?->isOther() && filled($this->category_other)) {
+            return 'Other: '.$this->category_other;
+        }
+
+        return $this->category?->name ?? '—';
     }
 
     public function canBeDirectedBy(User $user): bool

@@ -42,6 +42,8 @@ class TicketLog extends Model
             'created' => ['label' => 'Dibuat', 'color' => 'indigo'],
             'priority_set' => ['label' => 'Set Prioritas', 'color' => 'sky'],
             'achievement_set' => ['label' => 'Poin Achievement', 'color' => 'amber'],
+            'due_date_set' => ['label' => 'Estimasi Selesai', 'color' => 'sky'],
+            'deleted' => ['label' => 'Dihapus', 'color' => 'rose'],
             'in_progress' => ['label' => 'Diproses', 'color' => 'sky'],
             'escalated' => ['label' => 'Eskalasi', 'color' => 'amber'],
             'disposed' => ['label' => 'Disposisi', 'color' => 'violet'],
